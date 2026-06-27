@@ -18,7 +18,7 @@ export const Navbar: React.FC = () => {
   ];
 
   // Show Admin panel if user is admin (Mock user has isAdmin: true, or Firebase can be configured)
-  if (user && (user.isAdmin || user.email === "admin@f1prediction.com" || isMock)) {
+  if (user && (user.isAdmin || user.email === "rgtizon0@gmail.com" || isMock)) {
     navLinks.push({ name: "Admin Panel", href: "/admin", icon: Settings });
   }
 
@@ -55,11 +55,10 @@ export const Navbar: React.FC = () => {
                 <Link
                   key={link.name}
                   href={link.href}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-250 ${
-                    active
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-250 ${active
                       ? "text-primary bg-primary/10 border-b-2 border-primary rounded-b-none"
                       : "text-muted hover:text-white hover:bg-white/5"
-                  }`}
+                    }`}
                 >
                   <Icon className="h-4 w-4" />
                   {link.name}
@@ -141,11 +140,10 @@ export const Navbar: React.FC = () => {
                 key={link.name}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium transition-all ${
-                  active
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-base font-medium transition-all ${active
                     ? "text-primary bg-primary/10 border-l-4 border-primary"
                     : "text-muted hover:text-white hover:bg-white/5"
-                }`}
+                  }`}
               >
                 <Icon className="h-5 w-5" />
                 {link.name}

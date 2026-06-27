@@ -24,6 +24,14 @@ export const isFirebaseConfigured =
   firebaseConfig.apiKey !== "your_firebase_api_key" &&
   !!firebaseConfig.projectId;
 
+if (typeof window !== "undefined") {
+  console.log("Firebase config detected in browser:", {
+    apiKey: firebaseConfig.apiKey,
+    projectId: firebaseConfig.projectId,
+    isFirebaseConfigured
+  });
+}
+
 let app;
 let auth: any = null;
 let db: any = null;

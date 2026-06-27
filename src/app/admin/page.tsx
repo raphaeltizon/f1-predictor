@@ -8,11 +8,11 @@ import { Settings, ShieldAlert, RefreshCw, Award, CheckCircle, AlertTriangle, Us
 
 export default function Admin() {
   const { user, isMock } = useAuth();
-  
+
   const [schedule, setSchedule] = useState<Race[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Status logging states
   const [activeSyncing, setActiveSyncing] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -39,8 +39,8 @@ export default function Admin() {
   };
 
   const triggerSync = async (
-    round: string, 
-    raceName: string, 
+    round: string,
+    raceName: string,
     sessionType: "quali" | "race" | "sprint"
   ) => {
     const key = `${round}_${sessionType}`;
@@ -71,7 +71,7 @@ export default function Admin() {
           throw new Error("No race results found from official F1 API yet. Race may not have concluded.");
         }
         officialDriverIds = results.map(r => r.driverId);
-        
+
         // Find fastest lap driver
         const fl = results.find(r => r.fastestLap);
         fastestLapDriverId = fl?.driverId;
@@ -92,9 +92,9 @@ export default function Admin() {
       // 2. Load all user predictions for this round + session
       addLog(`Retrieving player predictions...`);
       const predictions = await getPredictionsForRound("2026", round);
-      
+
       const sessionPredictions = predictions.filter(p => p.sessionType === sessionType);
-      
+
       addLog(`Found ${sessionPredictions.length} player submissions for this session.`);
 
       if (sessionPredictions.length === 0) {
@@ -155,7 +155,7 @@ export default function Admin() {
     setLogs([]);
 
     addLog(`[MOCK MODE] Simulating session closure for ${raceName}...`);
-    
+
     // Shuffle drivers to simulate race finish
     addLog(`Generating speculative results...`);
     const shuffledDrivers = [...drivers].sort(() => Math.random() - 0.5);
@@ -212,7 +212,7 @@ export default function Admin() {
     });
 
     addLog(`Calculating points for ${allSubmissions.length} active players...`);
-    
+
     for (const pred of allSubmissions) {
       const breakdown = calculatePredictionScore(
         pred.driverIds,
@@ -253,7 +253,7 @@ export default function Admin() {
   }
 
   // Double check admin page permissions
-  const isAuthorized = user && (user.isAdmin || user.email === "admin@f1prediction.com" || isMock);
+  const isAuthorized = user && (user.isAdmin || user.email === "rgtizon0@gmail.com" || isMock);
   if (!isAuthorized) {
     return (
       <div className="glass-panel p-8 rounded-2xl text-center max-w-xl mx-auto border border-red-500/20 space-y-4">
@@ -285,11 +285,11 @@ export default function Admin() {
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             Championship Season Rounds
           </h3>
-          
+
           <div className="space-y-3">
             {schedule.slice(0, 8).map((race) => (
-              <div 
-                key={race.round} 
+              <div
+                key={race.round}
                 className="glass-panel p-5 rounded-xl border border-border/60 space-y-4"
               >
                 <div className="flex items-center justify-between">
@@ -304,7 +304,7 @@ export default function Admin() {
                 <div className="flex flex-wrap gap-2 pt-2 border-t border-border/30">
                   {/* GP Quali Sync */}
                   <button
-                    onClick={() => isMock 
+                    onClick={() => isMock
                       ? triggerMockGenerate(race.round, race.raceName, "quali")
                       : triggerSync(race.round, race.raceName, "quali")
                     }
