@@ -156,11 +156,24 @@ export default function Admin() {
 
     addLog(`[MOCK MODE] Simulating session closure for ${raceName}...`);
 
-    // Shuffle drivers to simulate race finish
-    addLog(`Generating speculative results...`);
     const shuffledDrivers = [...drivers].sort(() => Math.random() - 0.5);
     const mockOfficialIds = shuffledDrivers.slice(0, 10).map(d => d.driverId);
     const mockFastestLapId = shuffledDrivers[Math.floor(Math.random() * 10)].driverId;
+
+    // Save generated results to localStorage so Results page can display them
+    if (typeof window !== "undefined") {
+      const resultsKey = "f1_local_results";
+      const existingResults = localStorage.getItem(resultsKey);
+      let localResults: Record<string, any> = {};
+      if (existingResults) {
+        try { localResults = JSON.parse(existingResults); } catch (e) {}
+      }
+      localResults[`2026_${round}_${sessionType}`] = {
+        driverIds: mockOfficialIds,
+        fastestLapDriverId: sessionType === "race" ? mockFastestLapId : undefined
+      };
+      localStorage.setItem(resultsKey, JSON.stringify(localResults));
+    }
 
     addLog(`Mock Grid Results Top 3: P1: ${shuffledDrivers[0].code}, P2: ${shuffledDrivers[1].code}, P3: ${shuffledDrivers[2].code}`);
 
