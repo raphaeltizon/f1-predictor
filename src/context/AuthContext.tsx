@@ -8,6 +8,7 @@ import {
   setMockProfile,
   isFirebaseConfigured
 } from "@/lib/firebase";
+import { syncLocalPredictionsToFirestore } from "@/lib/predictions";
 
 interface AuthContextType {
   user: any | null;
@@ -29,6 +30,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = subscribeToAuth((currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      if (currentUser) {
+        syncLocalPredictionsToFirestore();
+      }
     });
 
     // Also listen to storage events to sync user points/name changes in Mock Mode

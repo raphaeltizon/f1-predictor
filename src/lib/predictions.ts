@@ -113,7 +113,14 @@ export async function savePrediction(prediction: Prediction): Promise<void> {
   if (isFirebaseConfigured && db) {
     try {
       const predRef = doc(db, "predictions", docId);
-      await setDoc(predRef, prediction);
+      // Clean up undefined fields to prevent Firestore from throwing errors
+      const cleanPrediction = { ...prediction };
+      Object.keys(cleanPrediction).forEach((key) => {
+        if (cleanPrediction[key as keyof Prediction] === undefined) {
+          delete cleanPrediction[key as keyof Prediction];
+        }
+      });
+      await setDoc(predRef, cleanPrediction);
       return;
     } catch (e) {
       console.error("Firebase save prediction failed, saving locally:", e);
@@ -130,6 +137,42 @@ export async function savePrediction(prediction: Prediction): Promise<void> {
     }
     preds[docId] = prediction;
     localStorage.setItem(key, JSON.stringify(preds));
+  }
+}
+
+// Sync local predictions to Firestore
+export async function syncLocalPredictionsToFirestore(): Promise<void> {
+  if (!isFirebaseConfigured || !db || typeof window === "undefined") return;
+
+  const key = "f1_local_predictions";
+  const existing = localStorage.getItem(key);
+  if (!existing) return;
+
+  try {
+    const localPreds = JSON.parse(existing) as Record<string, Prediction>;
+    const keys = Object.keys(localPreds);
+    if (keys.length === 0) return;
+
+    console.log(`Syncing ${keys.length} local predictions to Firestore...`);
+    
+    for (const docId of keys) {
+      const prediction = localPreds[docId];
+      const predRef = doc(db, "predictions", docId);
+      
+      const cleanPrediction = { ...prediction };
+      Object.keys(cleanPrediction).forEach((k) => {
+        if (cleanPrediction[k as keyof Prediction] === undefined) {
+          delete cleanPrediction[k as keyof Prediction];
+        }
+      });
+
+      await setDoc(predRef, cleanPrediction);
+    }
+    
+    localStorage.removeItem(key);
+    console.log("Local predictions successfully synced and cleared from local storage.");
+  } catch (error) {
+    console.error("Failed to sync local predictions to Firestore:", error);
   }
 }
 
