@@ -166,7 +166,7 @@ export default function Admin() {
       const existingResults = localStorage.getItem(resultsKey);
       let localResults: Record<string, any> = {};
       if (existingResults) {
-        try { localResults = JSON.parse(existingResults); } catch (e) {}
+        try { localResults = JSON.parse(existingResults); } catch (e) { }
       }
       localResults[`2026_${round}_${sessionType}`] = {
         driverIds: mockOfficialIds,
@@ -300,7 +300,7 @@ export default function Admin() {
           </h3>
 
           <div className="space-y-3">
-            {schedule.slice(0, 8).map((race) => (
+            {schedule.map((race) => (
               <div
                 key={race.round}
                 className="glass-panel p-5 rounded-xl border border-border/60 space-y-4"

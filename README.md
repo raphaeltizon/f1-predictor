@@ -113,6 +113,30 @@ npm run start
 
 ---
 
+## 🚀 Deployment to Vercel
+
+This application is fully optimized for deployment on **Vercel**:
+
+### 1. Push to Git
+Push your codebase to your preferred Git provider (GitHub, GitLab, or Bitbucket).
+
+### 2. Import to Vercel
+1. Log in to the [Vercel Dashboard](https://vercel.com).
+2. Click **Add New** -> **Project** and import your repository.
+3. Vercel automatically detects Next.js configuration and optimizes build settings.
+
+### 3. Add Environment Variables
+Before deploying, make sure to add all environment variables defined in `.env.local.template` in the **Environment Variables** section of the project configuration:
+
+- Add public variables (e.g., `NEXT_PUBLIC_FIREBASE_API_KEY`, etc.) as standard variables.
+- Add admin variables (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, and `FIREBASE_PRIVATE_KEY`) if using production verification scripts.
+- **Note on `FIREBASE_PRIVATE_KEY`**: When pasting the private key into Vercel's Environment Variables UI, make sure to include the double quotes and the literal `\n` characters (e.g. `"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"`) or paste it directly so Vercel handles it as a multi-line string.
+
+### 4. Deploy
+Click **Deploy**. Once the build finishes, your production-ready F1 Predictor application will be live!
+
+---
+
 ## 🛠️ Admin Operations & Scoring
 
 To score users' submissions once a race weekend ends:
