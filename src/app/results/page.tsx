@@ -13,6 +13,8 @@ import {
   RaceResult 
 } from "@/lib/f1Api";
 import { useAuth } from "@/context/AuthContext";
+import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { getSessionDate, isSessionLocked } from "@/lib/predictions";
 import Link from "next/link";
 import { 
@@ -126,7 +128,7 @@ export default function Results() {
     setMockResults(null);
 
     const sessionType = activeSession.key;
-    const isPractice = activeSession.isPractice || sessionType === "sprintQuali";
+    const isPractice = activeSession.isPractice;
 
     // If it's a practice session, we don't fetch classifications
     if (isPractice) {
@@ -142,7 +144,7 @@ export default function Results() {
           const stored = localStorage.getItem(resultsKey);
           if (stored) {
             const allMockResults = JSON.parse(stored);
-            const key = `2026_${selectedRound}_${sessionType === "sprint" ? "sprint" : sessionType === "quali" ? "quali" : "race"}`;
+            const key = `2026_${selectedRound}_${sessionType}`;
             if (allMockResults[key]) {
               setMockResults(allMockResults[key]);
               setResultsLoading(false);
@@ -152,7 +154,7 @@ export default function Results() {
           // If no mock data generated yet, show error explaining they need to generate it
           setResultsError("no_mock_data");
         } else {
-          // Real mode: fetch from Jolpica API
+          // Real mode: fetch from Jolpica API or fetch manual sprintQuali results
           if (sessionType === "race") {
             const data = await getRaceResults(selectedRound, "2026");
             if (data && data.length > 0) {
@@ -173,6 +175,35 @@ export default function Results() {
               setRaceResults(data); // Sprint results share RaceResult format
             } else {
               setResultsError("empty");
+            }
+          } else if (sessionType === "sprintQuali") {
+            // Load manually entered Sprint Shootout results
+            if (isFirebaseConfigured && db) {
+              const resRef = doc(db, "results", `2026_${selectedRound}_sprintQuali`);
+              const resSnap = await getDoc(resRef);
+              if (resSnap.exists()) {
+                const resData = resSnap.data();
+                setMockResults({
+                  driverIds: resData.driverIds,
+                  fastestLapDriverId: resData.fastestLapDriverId
+                });
+              } else {
+                setResultsError("empty");
+              }
+            } else {
+              const resultsKey = "f1_local_results";
+              const stored = localStorage.getItem(resultsKey);
+              if (stored) {
+                const allMockResults = JSON.parse(stored);
+                const key = `2026_${selectedRound}_sprintQuali`;
+                if (allMockResults[key]) {
+                  setMockResults(allMockResults[key]);
+                } else {
+                  setResultsError("empty");
+                }
+              } else {
+                setResultsError("empty");
+              }
             }
           }
         }
@@ -346,7 +377,7 @@ export default function Results() {
           {activeSession && (
             <div className="space-y-6">
               {/* Practice Session Detail Box */}
-              {activeSession.isPractice || activeSession.key === "sprintQuali" ? (
+              {activeSession.isPractice ? (
                 <div className="glass-panel p-8 rounded-2xl border border-accent/20 space-y-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-4">
                     <h3 className="text-xl font-bold text-white flex items-center gap-2">
@@ -511,7 +542,7 @@ export default function Results() {
                             <th className="px-6 py-4 w-20 text-center">Pos</th>
                             <th className="px-6 py-4">Driver</th>
                             <th className="px-6 py-4">Team</th>
-                            {activeSession.key === "quali" ? (
+                            {activeSession.key === "quali" || activeSession.key === "sprintQuali" ? (
                               <>
                                 <th className="px-6 py-4 text-center">Q1</th>
                                 <th className="px-6 py-4 text-center">Q2</th>
@@ -527,7 +558,7 @@ export default function Results() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                          {isMock && mockResults ? (
+                           {(isMock || activeSession.key === "sprintQuali") && mockResults ? (
                             /* RENDER MOCK STANDINGS */
                             mockResults.driverIds.map((driverId, idx) => {
                               const driverObj = drivers.find(d => d.driverId === driverId);
@@ -565,7 +596,7 @@ export default function Results() {
                                   <td className="px-6 py-4 text-sm text-muted">
                                     {driverObj?.constructorName || "TBD"}
                                   </td>
-                                  {activeSession.key === "quali" ? (
+                                   {activeSession.key === "quali" || activeSession.key === "sprintQuali" ? (
                                     <>
                                       <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>
                                       <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>

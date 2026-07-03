@@ -5,6 +5,8 @@ import { getSeasonSchedule, getDrivers, getQualifyingResults, getRaceResults, ge
 import { useAuth } from "@/context/AuthContext";
 import { getPredictionsForRound, calculatePredictionScore, saveUserScore } from "@/lib/predictions";
 import { Settings, ShieldAlert, RefreshCw, Award, CheckCircle, AlertTriangle, UserCheck } from "lucide-react";
+import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 export default function Admin() {
   const { user, isMock } = useAuth();
@@ -17,6 +19,11 @@ export default function Admin() {
   const [activeSyncing, setActiveSyncing] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Manual Entry form states
+  const [manualRound, setManualRound] = useState<string>("1");
+  const [manualSession, setManualSession] = useState<"quali" | "race" | "sprint" | "sprintQuali">("sprintQuali");
+  const [manualGrid, setManualGrid] = useState<string[]>(new Array(10).fill(""));
 
   useEffect(() => {
     async function loadData() {
@@ -41,7 +48,7 @@ export default function Admin() {
   const triggerSync = async (
     round: string,
     raceName: string,
-    sessionType: "quali" | "race" | "sprint"
+    sessionType: "quali" | "race" | "sprint" | "sprintQuali"
   ) => {
     const key = `${round}_${sessionType}`;
     setActiveSyncing(key);
@@ -87,6 +94,33 @@ export default function Admin() {
         }
         officialDriverIds = results.map(r => r.driverId);
         addLog(`Successfully retrieved official Sprint Top 3: ${results.slice(0, 3).map(r => `${r.position}. ${r.code}`).join(", ")}`);
+      } else if (sessionType === "sprintQuali") {
+        addLog(`Retrieving manually entered Sprint Shootout results...`);
+        let manualDriverIds: string[] = [];
+        if (isFirebaseConfigured && db) {
+          const resRef = doc(db, "results", `2026_${round}_sprintQuali`);
+          const resSnap = await getDoc(resRef);
+          if (resSnap.exists()) {
+            manualDriverIds = resSnap.data().driverIds || [];
+          }
+        }
+        if (manualDriverIds.length === 0) {
+          // Fallback to local storage
+          const resultsKey = "f1_local_results";
+          const stored = localStorage.getItem(resultsKey);
+          if (stored) {
+            const allResults = JSON.parse(stored);
+            const key = `2026_${round}_sprintQuali`;
+            if (allResults[key]) {
+              manualDriverIds = allResults[key].driverIds || [];
+            }
+          }
+        }
+        if (manualDriverIds.length === 0) {
+          throw new Error("No manually entered results found for Sprint Qualifying. Please use the Manual Entry form first.");
+        }
+        officialDriverIds = manualDriverIds;
+        addLog(`Successfully retrieved manually entered Sprint Quali Results.`);
       }
 
       // 2. Load all user predictions for this round + session
@@ -148,7 +182,7 @@ export default function Admin() {
   };
 
   // Mock-mode scoring generator (generates results and scores mock users and current user)
-  const triggerMockGenerate = async (round: string, raceName: string, sessionType: "quali" | "race" | "sprint") => {
+  const triggerMockGenerate = async (round: string, raceName: string, sessionType: "quali" | "race" | "sprint" | "sprintQuali") => {
     const key = `${round}_${sessionType}`;
     setActiveSyncing(key);
     setErrorMessage(null);
@@ -256,6 +290,108 @@ export default function Admin() {
     setActiveSyncing(null);
   };
 
+  const triggerManualScore = async (
+    round: string,
+    raceName: string,
+    sessionType: "quali" | "race" | "sprint" | "sprintQuali",
+    driverIds: string[]
+  ) => {
+    const key = `${round}_${sessionType}`;
+    setActiveSyncing(key);
+    setErrorMessage(null);
+    setLogs([]);
+
+    addLog(`[MANUAL ENTRY] Starting scoring for ${raceName} - ${sessionType.toUpperCase()}`);
+
+    try {
+      // Validate grid
+      const filledDrivers = driverIds.filter(id => id !== "");
+      if (filledDrivers.length < 10) {
+        throw new Error("Please select all 10 positions for the manual results.");
+      }
+
+      // Save results to Firestore/localStorage
+      addLog(`Saving manual results to database...`);
+      if (isFirebaseConfigured && db) {
+        const resRef = doc(db, "results", `2026_${round}_${sessionType}`);
+        await setDoc(resRef, {
+          driverIds: filledDrivers,
+          updatedAt: Date.now()
+        });
+      }
+
+      // Always save to local storage as well for results preview & fallback
+      if (typeof window !== "undefined") {
+        const resultsKey = "f1_local_results";
+        const existingResults = localStorage.getItem(resultsKey);
+        let localResults: Record<string, any> = {};
+        if (existingResults) {
+          try { localResults = JSON.parse(existingResults); } catch (e) {}
+        }
+        localResults[`2026_${round}_${sessionType}`] = {
+          driverIds: filledDrivers
+        };
+        localStorage.setItem(resultsKey, JSON.stringify(localResults));
+      }
+
+      addLog(`Grid Results saved successfully.`);
+
+      // Score each user and update database
+      addLog(`Retrieving player predictions...`);
+      const predictions = await getPredictionsForRound("2026", round);
+      const sessionPredictions = predictions.filter(p => p.sessionType === sessionType);
+
+      addLog(`Found ${sessionPredictions.length} player submissions for this session.`);
+
+      if (sessionPredictions.length === 0) {
+        addLog(`No player predictions to score.`);
+        addLog(`Sync completed.`);
+        setActiveSyncing(null);
+        return;
+      }
+
+      addLog(`Calculating scores...`);
+      let scoresComputedCount = 0;
+
+      for (const pred of sessionPredictions) {
+        const breakdown = calculatePredictionScore(
+          pred.driverIds,
+          filledDrivers,
+          undefined, // no fastest lap in sprint qualifying
+          undefined
+        );
+
+        addLog(`Scoring player: ${pred.userName} -> ${breakdown.total} PTS`);
+
+        await saveUserScore(
+          pred.userId,
+          pred.userName,
+          "2026",
+          round,
+          sessionType,
+          breakdown.total,
+          breakdown
+        );
+        scoresComputedCount++;
+      }
+
+      // Force storage synchronization event for Mock Mode
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("storage"));
+      }
+
+      addLog(`Success! Scored and updated ${scoresComputedCount} players.`);
+      addLog(`Leaderboard recalculation finished.`);
+
+    } catch (e: any) {
+      console.error(e);
+      setErrorMessage(e.message || "Failed to synchronize results.");
+      addLog(`ERROR: Sync aborted.`);
+    } finally {
+      setActiveSyncing(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
@@ -355,9 +491,113 @@ export default function Admin() {
                     <RefreshCw className={`h-3 w-3 ${activeSyncing === `${race.round}_race` ? "animate-spin" : ""}`} />
                     Score GP Race
                   </button>
+
+                  {/* Sprint Shootout (if sprint weekend) */}
+                  {race.SprintQualifying && (
+                    <button
+                      onClick={() => {
+                        if (isMock) {
+                          triggerMockGenerate(race.round, race.raceName, "sprintQuali");
+                        } else {
+                          setManualRound(race.round);
+                          setManualSession("sprintQuali");
+                          const manualSection = document.getElementById("manual-entry-section");
+                          manualSection?.scrollIntoView({ behavior: "smooth" });
+                        }
+                      }}
+                      disabled={activeSyncing !== null}
+                      className="flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-3 py-1.5 rounded text-xs font-bold text-amber-500 active:scale-95 transition-all disabled:opacity-40"
+                    >
+                      <RefreshCw className={`h-3 w-3 ${activeSyncing === `${race.round}_sprintQuali` ? "animate-spin" : ""}`} />
+                      Score Sprint Shootout
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* Manual Entry Form */}
+          <div id="manual-entry-section" className="glass-panel p-6 rounded-xl border border-border/80 space-y-6 mt-8">
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                Manual Grid Result Entry
+              </h3>
+              <p className="text-xs text-muted mt-1">
+                Since official APIs do not support Sprint Qualifying, use this form to manually enter classifications for scoring. Can also be used to override other sessions if needed.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1.5">Round</label>
+                <select
+                  value={manualRound}
+                  onChange={(e) => setManualRound(e.target.value)}
+                  className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                >
+                  {schedule.map(r => (
+                    <option key={r.round} value={r.round}>Round {r.round} - {r.raceName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-1.5">Session Type</label>
+                <select
+                  value={manualSession}
+                  onChange={(e) => setManualSession(e.target.value as any)}
+                  className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                >
+                  <option value="sprintQuali">Sprint Shootout (sprintQuali)</option>
+                  <option value="sprint">Sprint Race (sprint)</option>
+                  <option value="quali">GP Qualifying (quali)</option>
+                  <option value="race">GP Race (race)</option>
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    const race = schedule.find(r => r.round === manualRound);
+                    triggerManualScore(manualRound, race?.raceName || `Round ${manualRound}`, manualSession, manualGrid);
+                  }}
+                  disabled={activeSyncing !== null}
+                  className="w-full bg-primary hover:bg-primary-hover border border-primary/20 text-white font-bold py-2 px-4 rounded text-sm active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Save & Score Predictions
+                </button>
+              </div>
+            </div>
+
+            {/* Drivers select list grid */}
+            <div className="space-y-3 pt-4 border-t border-border/30">
+              <h4 className="text-xs font-bold text-muted uppercase tracking-wider">P1 - P10 Classifications</h4>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {Array.from({ length: 10 }).map((_, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    <span className="w-8 text-right font-mono font-bold text-sm text-muted">P{idx + 1}</span>
+                    <select
+                      value={manualGrid[idx]}
+                      onChange={(e) => {
+                        const newGrid = [...manualGrid];
+                        newGrid[idx] = e.target.value;
+                        setManualGrid(newGrid);
+                      }}
+                      className="flex-1 bg-surface border border-border rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-semibold"
+                    >
+                      <option value="">-- Select Driver --</option>
+                      {drivers.map(d => (
+                        <option key={d.driverId} value={d.driverId}>
+                          {d.code} - {d.givenName} {d.familyName} ({d.constructorName})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
