@@ -411,8 +411,8 @@ export default function Predictions() {
             {/* Top 10 Predictions Box */}
             <div className="lg:col-span-3 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                  <span>Your Predicted Top 10</span>
+                <h3 className="font-display font-bold text-white text-lg flex items-center gap-2">
+                  <span>Predicted Grid (P1 - P10)</span>
                 </h3>
                 
                 {/* Control Action Buttons */}
@@ -420,15 +420,15 @@ export default function Predictions() {
                   <div className="flex gap-2">
                     <button
                       onClick={autoFillRemaining}
-                      className="px-3 py-1 rounded bg-surface border border-border text-xs font-bold text-secondary hover:border-secondary transition-all"
+                      className="px-3 py-1 rounded bg-surface border border-border text-xs font-mono font-bold text-secondary hover:border-secondary hover:shadow-neon-cyan transition-all"
                     >
-                      Auto-Fill
+                      Auto-Fill Grid
                     </button>
                     <button
                       onClick={clearAll}
-                      className="px-3 py-1 rounded bg-surface border border-border text-xs font-bold text-muted hover:border-red-500 hover:text-red-400 transition-all flex items-center gap-1"
+                      className="px-3 py-1 rounded bg-surface border border-border text-xs font-mono font-bold text-slate-400 hover:border-primary hover:text-primary transition-all flex items-center gap-1"
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-3.5 w-3.5" />
                       Clear
                     </button>
                   </div>
@@ -442,10 +442,14 @@ export default function Predictions() {
                   return (
                     <div 
                       key={idx} 
-                      className="flex items-center gap-3 bg-surface/50 border border-border/80 px-4 py-2.5 rounded-xl leaderboard-row"
+                      className={`flex items-center gap-3 bg-surface/70 border px-4 py-2.5 rounded-xl transition-all ${
+                        driverObj ? "border-border/80 shadow-md hover:border-slate-400" : "border-dashed border-border/50"
+                      }`}
                     >
                       {/* Position Label */}
-                      <span className="font-mono text-base font-black w-6 text-muted">
+                      <span className={`font-mono text-base font-black w-8 ${
+                        idx === 0 ? "text-podium-gold font-display text-lg" : idx === 1 ? "text-podium-silver font-display" : idx === 2 ? "text-podium-bronze font-display" : "text-slate-400"
+                      }`}>
                         P{(idx + 1).toString().padStart(2, "0")}
                       </span>
 
@@ -455,14 +459,19 @@ export default function Predictions() {
                           <div className="flex items-center gap-3">
                             {/* Color bar */}
                             <div 
-                              className="w-1.5 h-7 rounded-sm"
+                              className="w-2 h-8 rounded-sm shadow-sm shrink-0"
                               style={{ backgroundColor: driverObj.teamColor }}
                             />
                             <div className="flex flex-col">
-                              <span className="text-sm font-bold text-white leading-tight">
-                                {driverObj.givenName} {driverObj.familyName}
-                              </span>
-                              <span className="text-[10px] text-muted font-semibold uppercase">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-sm leading-tight">
+                                  {driverObj.givenName} {driverObj.familyName}
+                                </span>
+                                <span className="text-[10px] font-mono font-bold bg-white/10 px-1.5 py-0.2 rounded text-slate-300">
+                                  #{driverObj.permanentNumber || driverObj.code}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider">
                                 {driverObj.constructorName}
                               </span>
                             </div>
@@ -474,20 +483,20 @@ export default function Predictions() {
                               <button
                                 onClick={() => moveDriver(idx, "up")}
                                 disabled={idx === 0}
-                                className="p-1 rounded hover:bg-white/5 text-muted hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                                className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-white disabled:opacity-20"
                               >
                                 <ChevronUp className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => moveDriver(idx, "down")}
                                 disabled={idx === 9}
-                                className="p-1 rounded hover:bg-white/5 text-muted hover:text-white disabled:opacity-30 disabled:hover:bg-transparent"
+                                className="p-1.5 rounded hover:bg-white/10 text-slate-400 hover:text-white disabled:opacity-20"
                               >
                                 <ChevronDown className="h-4 w-4" />
                               </button>
                               <button
                                 onClick={() => removeDriver(idx)}
-                                className="p-1.5 rounded hover:bg-red-500/10 text-muted hover:text-red-400"
+                                className="p-1.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-primary"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -495,8 +504,8 @@ export default function Predictions() {
                           )}
                         </div>
                       ) : (
-                        <div className="flex-1 py-1.5 flex items-center justify-center border border-dashed border-border/60 rounded-lg text-xs font-semibold text-muted/50 select-none">
-                          {!sessionLocked ? "Click a driver on the right to place here" : "No prediction submitted"}
+                        <div className="flex-1 py-2 flex items-center justify-center text-xs font-mono font-semibold text-slate-500 select-none">
+                          {!sessionLocked ? "+ Select driver from grid pool" : "No prediction submitted"}
                         </div>
                       )}
                     </div>
@@ -506,18 +515,18 @@ export default function Predictions() {
 
               {/* Fastest Lap selection for Grand Prix Race */}
               {activeSession === "race" && (
-                <div className="bg-surface/50 border border-border p-5 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6">
+                <div className="glass-panel border border-border/80 p-5 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6">
                   <div className="space-y-1">
-                    <h4 className="font-bold text-white text-sm flex items-center gap-1.5">
+                    <h4 className="font-display font-bold text-white text-sm flex items-center gap-2">
                       <Zap className="h-4 w-4 text-sprint" />
-                      Fastest Lap Prediction
+                      Fastest Lap Nomination (+5 PTS)
                     </h4>
-                    <p className="text-muted text-xs">Nominate the driver who will record the fastest lap of the GP (+5 PTS).</p>
+                    <p className="text-slate-400 text-xs">Select which driver will set the fastest lap of the Grand Prix.</p>
                   </div>
 
                   {sessionLocked ? (
-                    <div className="bg-background border border-border px-4 py-2.5 rounded-lg text-sm text-white font-bold flex items-center gap-2">
-                      <Lock className="h-3.5 w-3.5 text-muted" />
+                    <div className="bg-background border border-border px-4 py-2.5 rounded-lg text-xs font-mono font-bold text-white flex items-center gap-2">
+                      <Lock className="h-3.5 w-3.5 text-slate-400" />
                       {drivers.find(d => d.driverId === predictedFastestLap)
                         ? `${drivers.find(d => d.driverId === predictedFastestLap)?.givenName} ${drivers.find(d => d.driverId === predictedFastestLap)?.familyName}`
                         : "None Nominated"}
@@ -526,12 +535,12 @@ export default function Predictions() {
                     <select
                       value={predictedFastestLap}
                       onChange={(e) => setPredictedFastestLap(e.target.value)}
-                      className="bg-background text-sm font-semibold text-white px-3.5 py-2.5 rounded-lg border border-border focus:border-secondary outline-none w-full md:w-56"
+                      className="bg-background text-xs font-semibold text-white px-3.5 py-2.5 rounded-lg border border-border focus:border-secondary outline-none w-full md:w-60 cursor-pointer"
                     >
-                      <option value="">-- Choose Driver --</option>
+                      <option value="">-- Nominate Driver --</option>
                       {drivers.map((d) => (
                         <option key={d.driverId} value={d.driverId}>
-                          {d.code} - {d.givenName} {d.familyName}
+                          {d.code} - {d.givenName} {d.familyName} ({d.constructorName})
                         </option>
                       ))}
                     </select>
@@ -545,8 +554,8 @@ export default function Predictions() {
                   <div 
                     className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold border ${
                       saveStatus.type === "success" 
-                        ? "bg-green-500/10 border-green-500/20 text-green-400" 
-                        : "bg-red-500/10 border-red-500/20 text-red-400"
+                        ? "bg-green-500/10 border-green-500/30 text-green-400" 
+                        : "bg-red-500/10 border-red-500/30 text-primary"
                     }`}
                   >
                     {saveStatus.type === "success" ? <Check className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
@@ -558,11 +567,11 @@ export default function Predictions() {
                   <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="w-full f1-skew-btn bg-primary hover:bg-primary-hover px-6 py-3 font-bold text-white text-sm shadow-glass-primary flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full f1-skew-btn bg-primary hover:bg-primary-hover px-6 py-3.5 font-display font-extrabold text-white text-sm uppercase tracking-wider shadow-neon-red flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     <span>
                       <Save className="h-4 w-4 inline mr-1" />
-                      {saving ? "Saving Predictions..." : "Save Predictions"}
+                      {saving ? "Saving Telemetry Grid..." : "Lock In Predictions"}
                     </span>
                   </button>
                 )}
@@ -571,22 +580,22 @@ export default function Predictions() {
 
             {/* Drivers Selection Pool */}
             <div className="lg:col-span-2 space-y-4">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                Available Drivers
+              <h3 className="font-display font-bold text-white text-lg flex items-center gap-2">
+                Available Drivers Pool
               </h3>
               
               {sessionLocked ? (
-                <div className="glass-panel p-5 rounded-xl text-center text-xs text-muted flex flex-col gap-2">
-                  <Lock className="h-6 w-6 text-muted mx-auto" />
-                  <span>Pool is locked because this session has already started.</span>
+                <div className="glass-panel p-6 rounded-xl text-center text-xs font-mono text-slate-400 flex flex-col gap-2">
+                  <Lock className="h-6 w-6 text-slate-400 mx-auto" />
+                  <span>Pool is locked — session underway.</span>
                 </div>
               ) : (
-                <div className="glass-panel p-4 rounded-xl space-y-3">
-                  <p className="text-muted text-[11px] leading-relaxed">
-                    Click drivers to place them into the next available prediction slot (P1 down to P10).
+                <div className="glass-panel p-4 rounded-xl space-y-3 border border-border/80">
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    Click any driver below to assign them into your grid predictions (P1 to P10).
                   </p>
                   
-                  <div className="grid grid-cols-2 gap-2 max-h-[500px] overflow-y-auto pr-1">
+                  <div className="grid grid-cols-2 gap-2 max-h-[550px] overflow-y-auto pr-1">
                     {drivers.map((driver) => {
                       const isSelected = predictedTop10.includes(driver.driverId);
                       return (
@@ -594,19 +603,22 @@ export default function Predictions() {
                           key={driver.driverId}
                           onClick={() => selectDriver(driver.driverId)}
                           disabled={isSelected}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-xs font-semibold transition-all ${
+                          className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-left text-xs font-semibold transition-all ${
                             isSelected
-                              ? "bg-border/30 border-border/40 text-muted opacity-40 cursor-not-allowed"
-                              : "bg-surface hover:bg-surface-hover border-border hover:border-border-hover text-white active:scale-95"
+                              ? "bg-surface/30 border-border/40 text-slate-500 opacity-30 cursor-not-allowed"
+                              : "bg-surface hover:bg-surface-hover border-border hover:border-slate-400 text-white active:scale-95 shadow-sm"
                           }`}
                         >
                           <div 
-                            className="w-1 h-5 rounded-sm shrink-0" 
+                            className="w-1.5 h-6 rounded-sm shrink-0 shadow-sm" 
                             style={{ backgroundColor: driver.teamColor }}
                           />
                           <div className="flex flex-col truncate">
-                            <span className="font-bold text-white font-mono leading-none">{driver.code}</span>
-                            <span className="text-[10px] text-muted truncate leading-relaxed">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-black text-white text-sm leading-none">{driver.code}</span>
+                              <span className="text-[9px] font-mono text-slate-400">#{driver.permanentNumber}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 truncate leading-tight">
                               {driver.familyName}
                             </span>
                           </div>
@@ -623,3 +635,4 @@ export default function Predictions() {
     </div>
   );
 }
+

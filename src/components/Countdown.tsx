@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Clock, ShieldAlert } from "lucide-react";
+import { Clock, ShieldAlert, Timer } from "lucide-react";
 
 interface CountdownProps {
   targetDate: Date;
@@ -49,37 +49,37 @@ export const Countdown: React.FC<CountdownProps> = ({ targetDate, sessionName, o
 
   if (timeLeft.isExpired) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-400">
-        <ShieldAlert className="h-4 w-4 text-red-500 animate-pulse" />
-        <span>Predictions Locked for {sessionName}</span>
+      <div className="flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-xs font-mono font-bold text-red-400">
+        <ShieldAlert className="h-4 w-4 text-primary animate-pulse" />
+        <span>LOCKDOWN: {sessionName.toUpperCase()} LOCKED</span>
       </div>
     );
   }
 
   const timeBlocks = [
-    { label: "D", value: timeLeft.days },
-    { label: "H", value: timeLeft.hours },
-    { label: "M", value: timeLeft.minutes },
-    { label: "S", value: timeLeft.seconds },
+    { label: "DAYS", value: timeLeft.days },
+    { label: "HRS", value: timeLeft.hours },
+    { label: "MIN", value: timeLeft.minutes },
+    { label: "SEC", value: timeLeft.seconds },
   ];
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1">
-        <Clock className="h-3.5 w-3.5 text-secondary" />
-        Time to lock {sessionName}
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+        <Timer className="h-4 w-4 text-secondary animate-spin" style={{ animationDuration: '4s' }} />
+        TIME TO LOCK {sessionName.toUpperCase()}
       </span>
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center">
         {timeBlocks.map((block, idx) => (
           <div key={idx} className="flex items-center">
-            <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface px-3 py-2 min-w-[50px] shadow-md">
-              <span className="font-mono text-lg font-black text-white leading-none">
+            <div className="flex flex-col items-center justify-center rounded-lg border border-secondary/30 bg-surface/90 px-3 py-2 min-w-[54px] shadow-glass-secondary">
+              <span className="font-mono text-xl font-black text-white leading-none tracking-wider">
                 {block.value.toString().padStart(2, "0")}
               </span>
-              <span className="text-[10px] font-bold text-muted mt-1 leading-none">{block.label}</span>
+              <span className="text-[9px] font-mono font-bold text-secondary mt-1 leading-none tracking-widest">{block.label}</span>
             </div>
             {idx < timeBlocks.length - 1 && (
-              <span className="mx-1 font-mono text-xl font-bold text-muted/30">:</span>
+              <span className="mx-1 font-mono text-lg font-black text-slate-500">:</span>
             )}
           </div>
         ))}
@@ -87,3 +87,4 @@ export const Countdown: React.FC<CountdownProps> = ({ targetDate, sessionName, o
     </div>
   );
 };
+

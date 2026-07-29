@@ -416,22 +416,22 @@ export default function Admin() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Header */}
-      <div className="border-b border-border/60 pb-6 flex items-center justify-between">
+      <div className="border-b border-border/80 pb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-white flex items-center gap-2">
+          <h1 className="font-display text-3xl md:text-4xl font-black text-white flex items-center gap-3">
             <Settings className="h-8 w-8 text-primary" />
-            Admin Control Center
+            Admin Telemetry Command Center
           </h1>
-          <p className="text-muted text-sm mt-1">Manage championship results sync and player scoring tables.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage championship results synchronization, mock data simulation, and player scoring tables.</p>
         </div>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-3">
         {/* Sync Controls Table */}
         <div className="lg:col-span-2 space-y-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
             Championship Season Rounds
           </h3>
 
@@ -439,18 +439,18 @@ export default function Admin() {
             {schedule.map((race) => (
               <div
                 key={race.round}
-                className="glass-panel p-5 rounded-xl border border-border/60 space-y-4"
+                className="glass-panel p-5 rounded-xl border border-border/80 space-y-4 shadow-sm hover:border-slate-400 transition-all"
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-[10px] text-muted font-bold font-mono uppercase">Round {race.round}</span>
-                    <h4 className="font-bold text-white text-sm">{race.raceName}</h4>
+                    <span className="font-display text-[10px] text-slate-400 font-bold uppercase tracking-widest">Round {race.round}</span>
+                    <h4 className="font-bold text-white text-base leading-tight">{race.raceName}</h4>
                   </div>
-                  <span className="text-xs font-mono text-muted">{race.Circuit.Location.locality}</span>
+                  <span className="text-xs font-mono font-semibold text-slate-300">{race.Circuit.Location.locality}</span>
                 </div>
 
                 {/* Session Scoring Buttons */}
-                <div className="flex flex-wrap gap-2 pt-2 border-t border-border/30">
+                <div className="flex flex-wrap gap-2 pt-3 border-t border-border/50">
                   {/* GP Quali Sync */}
                   <button
                     onClick={() => isMock
@@ -458,9 +458,9 @@ export default function Admin() {
                       : triggerSync(race.round, race.raceName, "quali")
                     }
                     disabled={activeSyncing !== null}
-                    className="flex items-center gap-1 bg-surface hover:bg-surface-hover border border-border px-3 py-1.5 rounded text-xs font-bold text-white active:scale-95 transition-all disabled:opacity-40"
+                    className="flex items-center gap-1.5 bg-surface hover:bg-surface-hover border border-border px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-white active:scale-95 transition-all disabled:opacity-40"
                   >
-                    <RefreshCw className={`h-3 w-3 ${activeSyncing === `${race.round}_quali` ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 ${activeSyncing === `${race.round}_quali` ? "animate-spin text-secondary" : ""}`} />
                     Score Quali
                   </button>
 
@@ -472,9 +472,9 @@ export default function Admin() {
                         : triggerSync(race.round, race.raceName, "sprint")
                       }
                       disabled={activeSyncing !== null}
-                      className="flex items-center gap-1 bg-sprint/10 hover:bg-sprint/20 border border-sprint/20 px-3 py-1.5 rounded text-xs font-bold text-sprint active:scale-95 transition-all disabled:opacity-40"
+                      className="flex items-center gap-1.5 bg-sprint/15 hover:bg-sprint/30 border border-sprint/40 px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-sprint active:scale-95 transition-all disabled:opacity-40"
                     >
-                      <RefreshCw className={`h-3 w-3 ${activeSyncing === `${race.round}_sprint` ? "animate-spin" : ""}`} />
+                      <RefreshCw className={`h-3.5 w-3.5 ${activeSyncing === `${race.round}_sprint` ? "animate-spin text-sprint" : ""}`} />
                       Score Sprint
                     </button>
                   )}
@@ -486,9 +486,9 @@ export default function Admin() {
                       : triggerSync(race.round, race.raceName, "race")
                     }
                     disabled={activeSyncing !== null}
-                    className="flex items-center gap-1 bg-primary/10 hover:bg-primary/20 border border-primary/20 px-3 py-1.5 rounded text-xs font-bold text-primary active:scale-95 transition-all disabled:opacity-40"
+                    className="flex items-center gap-1.5 bg-primary/15 hover:bg-primary/30 border border-primary/40 px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-primary active:scale-95 transition-all disabled:opacity-40 shadow-neon-red"
                   >
-                    <RefreshCw className={`h-3 w-3 ${activeSyncing === `${race.round}_race` ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`h-3.5 w-3.5 ${activeSyncing === `${race.round}_race` ? "animate-spin text-primary" : ""}`} />
                     Score GP Race
                   </button>
 
@@ -506,10 +506,10 @@ export default function Admin() {
                         }
                       }}
                       disabled={activeSyncing !== null}
-                      className="flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-3 py-1.5 rounded text-xs font-bold text-amber-500 active:scale-95 transition-all disabled:opacity-40"
+                      className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500/30 border border-amber-500/40 px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-amber-400 active:scale-95 transition-all disabled:opacity-40"
                     >
-                      <RefreshCw className={`h-3 w-3 ${activeSyncing === `${race.round}_sprintQuali` ? "animate-spin" : ""}`} />
-                      Score Sprint Shootout
+                      <RefreshCw className={`h-3.5 w-3.5 ${activeSyncing === `${race.round}_sprintQuali` ? "animate-spin text-amber-400" : ""}`} />
+                      Score Shootout
                     </button>
                   )}
                 </div>
@@ -518,23 +518,23 @@ export default function Admin() {
           </div>
 
           {/* Manual Entry Form */}
-          <div id="manual-entry-section" className="glass-panel p-6 rounded-xl border border-border/80 space-y-6 mt-8">
+          <div id="manual-entry-section" className="glass-panel p-6 rounded-2xl border border-border/80 space-y-6 mt-8">
             <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                Manual Grid Result Entry
+              <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
+                Manual Classification Override
               </h3>
-              <p className="text-xs text-muted mt-1">
-                Since official APIs do not support Sprint Qualifying, use this form to manually enter classifications for scoring. Can also be used to override other sessions if needed.
+              <p className="text-xs text-slate-400 mt-1">
+                Manually record position classifications for Sprint Shootout or override official session data.
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1.5">Round</label>
+                <label className="block text-xs font-mono font-bold text-slate-400 uppercase mb-1.5">Round</label>
                 <select
                   value={manualRound}
                   onChange={(e) => setManualRound(e.target.value)}
-                  className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-primary"
                 >
                   {schedule.map(r => (
                     <option key={r.round} value={r.round}>Round {r.round} - {r.raceName}</option>
@@ -543,11 +543,11 @@ export default function Admin() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-1.5">Session Type</label>
+                <label className="block text-xs font-mono font-bold text-slate-400 uppercase mb-1.5">Session Type</label>
                 <select
                   value={manualSession}
                   onChange={(e) => setManualSession(e.target.value as any)}
-                  className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                  className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-primary"
                 >
                   <option value="sprintQuali">Sprint Shootout (sprintQuali)</option>
                   <option value="sprint">Sprint Race (sprint)</option>
@@ -563,21 +563,23 @@ export default function Admin() {
                     triggerManualScore(manualRound, race?.raceName || `Round ${manualRound}`, manualSession, manualGrid);
                   }}
                   disabled={activeSyncing !== null}
-                  className="w-full bg-primary hover:bg-primary-hover border border-primary/20 text-white font-bold py-2 px-4 rounded text-sm active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+                  className="w-full f1-skew-btn bg-primary hover:bg-primary-hover border border-primary/20 text-white font-display font-bold py-2 px-4 text-xs tracking-wider uppercase active:scale-95 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5 shadow-neon-red"
                 >
-                  <CheckCircle className="h-4 w-4" />
-                  Save & Score Predictions
+                  <span>
+                    <CheckCircle className="h-4 w-4 inline mr-1" />
+                    Save & Score
+                  </span>
                 </button>
               </div>
             </div>
 
             {/* Drivers select list grid */}
-            <div className="space-y-3 pt-4 border-t border-border/30">
-              <h4 className="text-xs font-bold text-muted uppercase tracking-wider">P1 - P10 Classifications</h4>
+            <div className="space-y-3 pt-4 border-t border-border/50">
+              <h4 className="font-display text-xs font-bold text-slate-300 uppercase tracking-wider">P1 - P10 Grid Results</h4>
               <div className="grid gap-4 sm:grid-cols-2">
                 {Array.from({ length: 10 }).map((_, idx) => (
                   <div key={idx} className="flex items-center gap-3">
-                    <span className="w-8 text-right font-mono font-bold text-sm text-muted">P{idx + 1}</span>
+                    <span className="w-8 text-right font-mono font-black text-xs text-slate-400">P{idx + 1}</span>
                     <select
                       value={manualGrid[idx]}
                       onChange={(e) => {
@@ -585,7 +587,7 @@ export default function Admin() {
                         newGrid[idx] = e.target.value;
                         setManualGrid(newGrid);
                       }}
-                      className="flex-1 bg-surface border border-border rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-semibold"
+                      className="flex-1 bg-surface border border-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-primary font-semibold cursor-pointer"
                     >
                       <option value="">-- Select Driver --</option>
                       {drivers.map(d => (
@@ -601,43 +603,43 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* Sync Logs Display */}
+        {/* Sync Logs Terminal Display */}
         <div className="space-y-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            Execution Output Log
+          <h3 className="font-display text-lg font-bold text-white flex items-center gap-2">
+            Execution Console Log
           </h3>
 
-          <div className="glass-panel p-5 rounded-xl border border-border min-h-[350px] flex flex-col justify-between">
-            <div className="space-y-3 font-mono text-xs">
+          <div className="glass-panel p-5 rounded-2xl border border-border/80 min-h-[400px] flex flex-col justify-between shadow-lg">
+            <div className="space-y-2.5 font-mono text-[11px] max-h-[420px] overflow-y-auto pr-1">
               {logs.map((log, idx) => (
-                <div key={idx} className="text-muted leading-relaxed">
+                <div key={idx} className="text-secondary leading-relaxed font-mono">
                   {log}
                 </div>
               ))}
 
               {logs.length === 0 && (
-                <div className="text-muted/40 text-center py-20 italic">
-                  Run a session score command to see execution logs...
+                <div className="text-slate-500 text-center py-24 italic font-mono">
+                  &gt; Execute session scoring to view console logs...
                 </div>
               )}
             </div>
 
             {/* Error Message banner */}
             {errorMessage && (
-              <div className="mt-4 flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-xs font-semibold">
+              <div className="mt-4 flex items-center gap-2 bg-red-500/15 border border-red-500/30 text-primary p-3.5 rounded-xl text-xs font-mono font-bold">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span>{errorMessage}</span>
               </div>
             )}
 
             {/* Admin notification panel */}
-            <div className="mt-4 bg-surface/50 border border-border/80 p-3.5 rounded-lg flex items-center gap-3">
-              <UserCheck className="h-5 w-5 text-secondary" />
-              <div className="text-[11px] text-muted">
+            <div className="mt-4 bg-surface/80 border border-border/80 p-4 rounded-xl flex items-center gap-3">
+              <UserCheck className="h-5 w-5 text-secondary shrink-0" />
+              <div className="text-xs text-slate-300 font-medium">
                 {isMock ? (
-                  <span>Running in <strong>Mock Admin Mode</strong>. Scoring computes automatically on fake simulation results.</span>
+                  <span>Running in <strong>Mock Mode</strong>. Scoring calculates using locally simulated grid data.</span>
                 ) : (
-                  <span>Connected to <strong>Firebase Server</strong>. Action triggers official API calls and updates DB.</span>
+                  <span>Connected to <strong>Firebase Server</strong>. Real Ergast API sync enabled.</span>
                 )}
               </div>
             </div>
@@ -647,3 +649,4 @@ export default function Admin() {
     </div>
   );
 }
+

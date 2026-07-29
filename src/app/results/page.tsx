@@ -300,24 +300,25 @@ export default function Results() {
   const fastestLapDriver = raceResults.find(r => r.fastestLap);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {/* Header and Round Selector */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/60 pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/80 pb-6">
         <div>
-          <h1 className="text-3xl font-black text-white flex items-center gap-2">
-            Championship Results
+          <h1 className="font-display text-3xl md:text-4xl font-black text-white flex items-center gap-3">
+            <Award className="h-8 w-8 text-primary" />
+            Official Championship Classifications
           </h1>
-          <p className="text-muted text-sm mt-1">View official grid placements, final session scores, and fastest lap standings.</p>
+          <p className="text-slate-400 text-sm mt-1">View official grid placements, final session scores, and fastest lap standings.</p>
         </div>
 
         {/* Round Selection Dropdown */}
-        <div className="flex items-center gap-2.5 bg-surface border border-border px-3 py-1.5 rounded-lg">
+        <div className="flex items-center gap-2.5 bg-surface border border-border px-3.5 py-2 rounded-xl">
           <Calendar className="h-4 w-4 text-primary" />
-          <span className="text-xs font-bold text-muted uppercase">Select Round:</span>
+          <span className="font-display text-xs font-bold text-slate-400 uppercase tracking-wider">Round:</span>
           <select
             value={selectedRound}
             onChange={(e) => setSelectedRound(e.target.value)}
-            className="bg-transparent text-sm font-semibold text-white outline-none cursor-pointer"
+            className="bg-transparent text-xs font-semibold text-white outline-none cursor-pointer"
           >
             {races.map((r) => (
               <option key={r.round} value={r.round} className="bg-surface text-white">
@@ -327,6 +328,7 @@ export default function Results() {
           </select>
         </div>
       </div>
+
 
       {activeRace && (
         <div className="space-y-6">

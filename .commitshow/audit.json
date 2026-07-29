@@ -1,0 +1,62 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-07-27T16:24:27.122Z",
+  "project": {
+    "id": "45834663-3fe2-465a-b7ed-341736be747d",
+    "name": "f1-predictor",
+    "github_url": "https://github.com/raphaeltizon/f1-predictor",
+    "live_url": "https://f1-predictor-xi-jet.vercel.app",
+    "status": "preview",
+    "creator": {
+      "name": null,
+      "grade": "Rookie"
+    },
+    "url": "https://commit.show/projects/45834663-3fe2-465a-b7ed-341736be747d"
+  },
+  "score": {
+    "track": "walk_on",
+    "total": 48,
+    "total_max": 100,
+    "audit": 24,
+    "audit_max": 50,
+    "scout": 0,
+    "scout_max": 30,
+    "community": 1,
+    "community_max": 20,
+    "delta_since_last": null,
+    "band": "weak",
+    "walk_on_total": 48,
+    "walk_on_band": "weak",
+    "walk_on_audit_normalized": 48
+  },
+  "standing": null,
+  "strengths": [
+    {
+      "axis": "Infrastructure",
+      "bullet": "All 3 routes (/predictions, /results, /leaderboard) return 200 with sub-600ms TTFB — routing is intact."
+    },
+    {
+      "axis": "UX",
+      "bullet": "Lighthouse mobile: Perf 84, A11y 89, BP 100, SEO 100 — no console errors or network failures during render."
+    },
+    {
+      "axis": "Code",
+      "bullet": "96.9% TypeScript across 22 files with npm lockfile present — clean, typed baseline for future contributors."
+    }
+  ],
+  "concerns": [
+    {
+      "axis": "Code",
+      "bullet": "Inline mock data arrays in 3 app-path files (admin/page.tsx, Countdown.tsx, Navbar.tsx) — real backend not fully wired."
+    },
+    {
+      "axis": "Security",
+      "bullet": "Firebase auth gap: auth_lib=firebase detected, has_auth_state_listener=false — session persistence on token refresh unhandled."
+    }
+  ],
+  "snapshot": {
+    "id": "4aab45ad-a759-4f85-837d-70f54f4fbb01",
+    "created_at": "2026-07-27T16:14:28.030431+00:00",
+    "trigger_type": "initial"
+  }
+}
