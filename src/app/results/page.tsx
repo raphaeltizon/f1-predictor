@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { 
   getSeasonSchedule, 
   getDrivers, 
@@ -62,6 +62,16 @@ export default function Results() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [resultsError, setResultsError] = useState<string | null>(null);
 
+  // Listen for storage events (admin lineup updates or mock updates)
+  useEffect(() => {
+    const handleStorage = async () => {
+      const updatedDrivers = await getDrivers("2026");
+      setDrivers(updatedDrivers);
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   // Initialize schedule and drivers list
   useEffect(() => {
     async function init() {
@@ -112,10 +122,12 @@ export default function Results() {
       const sessions = getAvailableSessions(race);
       
       // Preserve current session type selection if available on new race, else default to "race"
-      const prevKey = activeSession?.key || "race";
-      const nextSession = sessions.find(s => s.key === prevKey) || sessions.find(s => s.key === "race") || sessions[sessions.length - 1] || null;
-      setActiveSession(nextSession);
+      setActiveSession(prev => {
+        const prevKey = prev?.key || "race";
+        return sessions.find(s => s.key === prevKey) || sessions.find(s => s.key === "race") || sessions[sessions.length - 1] || null;
+      });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRound, races]);
 
   // Load results whenever round or session selection changes
@@ -219,7 +231,7 @@ export default function Results() {
   }, [selectedRound, activeSession, isMock, activeRace]);
 
   // Helper to dynamically build available sessions list
-  const getAvailableSessions = (race: Race): SessionOption[] => {
+  const getAvailableSessions = useCallback((race: Race): SessionOption[] => {
     const list: SessionOption[] = [];
     if (race.FirstPractice) {
       list.push({
@@ -283,7 +295,7 @@ export default function Results() {
       isPractice: false,
     });
     return list;
-  };
+  }, []);
 
   if (loading) {
     return (

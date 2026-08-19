@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true || 
+        request.auth.token.email == "rgtizon0@gmail.com"
+      );
+    }
+
+    // 1. Predictions Collection
+    match /predictions/{predId} {
+      // Anyone logged in can read predictions (for transparency)
+      allow read: if isAuthenticated();
+      // Users can only create or update their OWN predictions
+      allow create, update: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Delete disabled
+      allow delete: if false;
+    }
+
+    // 2. User Profiles & Scores
+    match /users/{userId} {
+      // Public read for leaderboard
+      allow read: if true;
+      // User can update profile, admin can update points
+      allow create, update: if isOwner(userId) || isAdmin();
+    }
+
+    match /scores/{scoreId} {
+      // Public read for scores breakdown
+      allow read: if true;
+      // Only Admin can write official scores
+      allow write: if isAdmin();
+    }
+
+    // 3. Results Collection
+    match /results/{resultId} {
+      // Public read for results
+      allow read: if true;
+      // Only Admin can write manual or synced official results
+      allow write: if isAdmin();
+    }
+  }
+}

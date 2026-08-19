@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { getSeasonSchedule, getDrivers, Race, Driver } from "@/lib/f1Api";
 import { useAuth } from "@/context/AuthContext";
-import { savePrediction, getPrediction, isSessionLocked, getSessionDate } from "@/lib/predictions";
+import { savePrediction, getPrediction, isSessionLocked, getSessionDate, getDriverReplacements } from "@/lib/predictions";
 import { 
   ChevronUp, 
   ChevronDown, 
@@ -14,8 +14,7 @@ import {
   Zap, 
   Calendar, 
   Check, 
-  AlertTriangle,
-  HelpCircle
+  AlertTriangle
 } from "lucide-react";
 
 export default function Predictions() {
@@ -39,6 +38,23 @@ export default function Predictions() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: "success" | "error" | null; msg: string }>({ type: null, msg: "" });
   const [sessionLocked, setSessionLocked] = useState(false);
+  const [driverReplacements, setDriverReplacements] = useState<Record<string, string>>({});
+
+
+
+  // Listen for storage events (admin lineup updates or driver replacement updates)
+  useEffect(() => {
+    const handleStorage = async () => {
+      const updatedDrivers = await getDrivers("2026");
+      setDrivers(updatedDrivers);
+      if (selectedRound) {
+        const reps = await getDriverReplacements("2026", selectedRound);
+        setDriverReplacements(reps);
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [selectedRound]);
 
   // Load schedule and drivers
   useEffect(() => {
@@ -92,6 +108,13 @@ export default function Predictions() {
     // Compute lock status of the selected session
     checkSessionLock(race, activeSession);
 
+    async function loadReplacements() {
+      if (!selectedRound) return;
+      const reps = await getDriverReplacements("2026", selectedRound);
+      setDriverReplacements(reps);
+    }
+    loadReplacements();
+
     if (!user) {
       // Reset prediction array for guests
       setPredictedTop10(new Array(10).fill(""));
@@ -122,7 +145,7 @@ export default function Predictions() {
     setSaveStatus({ type: null, msg: "" });
   }, [selectedRound, activeSession, user, races]);
 
-  const checkSessionLock = (race: Race | null, session: string) => {
+  const checkSessionLock = useCallback((race: Race | null, session: string) => {
     if (!race) {
       setSessionLocked(true);
       return;
@@ -154,7 +177,7 @@ export default function Predictions() {
     } else {
       setSessionLocked(isSessionLocked(dateStr, timeStr));
     }
-  };
+  }, []);
 
   // Session selector handler
   const handleSessionChange = (session: "quali" | "race" | "sprintQuali" | "sprint") => {
@@ -272,6 +295,17 @@ export default function Predictions() {
     }
   };
 
+  // Memoize computed values
+  const selectedDriverObjects = useMemo(
+    () => predictedTop10.map(id => drivers.find(d => d.driverId === id) || null),
+    [predictedTop10, drivers]
+  );
+
+  const remainingDrivers = useMemo(
+    () => drivers.filter(d => !predictedTop10.includes(d.driverId)),
+    [drivers, predictedTop10]
+  );
+
   if (loading) {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
@@ -280,10 +314,6 @@ export default function Predictions() {
       </div>
     );
   }
-
-  // Helper variables
-  const selectedDriverObjects = predictedTop10.map(id => drivers.find(d => d.driverId === id) || null);
-  const remainingDrivers = drivers.filter(d => !predictedTop10.includes(d.driverId));
 
   return (
     <div className="space-y-8">
@@ -313,6 +343,8 @@ export default function Predictions() {
           </select>
         </div>
       </div>
+
+
 
       {/* Main predictions board */}
       {!user ? (
@@ -355,6 +387,8 @@ export default function Predictions() {
               )}
             </div>
           )}
+
+
 
           {/* Session Tabs Selector */}
           {activeRace && (
@@ -635,4 +669,3 @@ export default function Predictions() {
     </div>
   );
 }
-

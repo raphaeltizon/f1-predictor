@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { getSeasonSchedule, Race } from "@/lib/f1Api";
 import { useAuth } from "@/context/AuthContext";
 import { Countdown } from "@/components/Countdown";
@@ -44,7 +44,7 @@ export default function Home() {
     loadData();
   }, []);
 
-  const determineNextSession = (race: Race) => {
+  const determineNextSession = useCallback((race: Race) => {
     const sessions: { name: string; dateStr: string; timeStr?: string }[] = [];
     
     if (race.SprintQualifying) sessions.push({ name: "Sprint Shootout", dateStr: race.SprintQualifying.date, timeStr: race.SprintQualifying.time });
@@ -66,7 +66,7 @@ export default function Home() {
     } else {
       setNextSession(null);
     }
-  };
+  }, []);
 
   if (loading) {
     return (

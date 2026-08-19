@@ -1,13 +1,13 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { 
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
   signOut, 
   onAuthStateChanged,
-  User as FirebaseUser
+  type Auth
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -25,17 +25,17 @@ export const isFirebaseConfigured =
   !!firebaseConfig.projectId;
 
 if (typeof window !== "undefined") {
-  console.log("Firebase config detected in browser:", {
-    apiKey: firebaseConfig.apiKey,
+  console.log("Firebase status:", {
     projectId: firebaseConfig.projectId,
     isFirebaseConfigured
   });
 }
 
-let app;
-let auth: any = null;
-let db: any = null;
-let googleProvider: any = null;
+
+let app: FirebaseApp | undefined;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+let googleProvider: GoogleAuthProvider | null = null;
 
 if (typeof window !== "undefined") {
   if (isFirebaseConfigured) {

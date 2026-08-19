@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -11,16 +11,20 @@ export const Navbar: React.FC = () => {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const navLinks = [
-    { name: "Dashboard", href: "/", icon: Calendar },
-    { name: "Predictions", href: "/predictions", icon: ClipboardCheck },
-    { name: "Results", href: "/results", icon: Award },
-    { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
-  ];
+  const navLinks = useMemo(() => {
+    const links = [
+      { name: "Dashboard", href: "/", icon: Calendar },
+      { name: "Predictions", href: "/predictions", icon: ClipboardCheck },
+      { name: "Results", href: "/results", icon: Award },
+      { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
+    ];
 
-  if (user && (user.isAdmin || user.email === "rgtizon0@gmail.com" || isMock)) {
-    navLinks.push({ name: "Admin Panel", href: "/admin", icon: Settings });
-  }
+    if (user && (user.isAdmin || user.email === "rgtizon0@gmail.com" || isMock)) {
+      links.push({ name: "Admin Panel", href: "/admin", icon: Settings });
+    }
+
+    return links;
+  }, [user, isMock]);
 
   const isActive = (path: string) => pathname === path;
 
