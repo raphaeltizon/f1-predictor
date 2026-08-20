@@ -46,6 +46,8 @@ export interface Driver {
 export interface DriverOverride {
   driverId: string;
   code?: string;
+  givenName?: string;
+  familyName?: string;
   constructorId?: string;
   constructorName?: string;
   teamColor?: string;
@@ -113,39 +115,104 @@ export function normalizeConstructorId(teamName: string): string {
   return lower;
 }
 
+const OVERRIDES_STORAGE_KEY = "f1_driver_overrides";
+
 export async function getDriverOverrides(): Promise<Record<string, DriverOverride>> {
+  let localOverrides: Record<string, DriverOverride> = {};
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(OVERRIDES_STORAGE_KEY);
+      if (stored) {
+        localOverrides = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.warn("Failed to read driver overrides from localStorage:", e);
+    }
+  }
+
   try {
     const colRef = collection(db, "driver_overrides");
     const snap = await getDocs(colRef);
-    const res: Record<string, DriverOverride> = {};
+    const res: Record<string, DriverOverride> = { ...localOverrides };
     snap.docs.forEach(doc => {
-      res[doc.id] = doc.data() as DriverOverride;
+      const data = doc.data() as DriverOverride;
+      res[doc.id] = data;
+      if (data.driverId) {
+        res[data.driverId.toLowerCase()] = data;
+      }
+      if (data.code) {
+        res[data.code.toLowerCase()] = data;
+        res[data.code.toUpperCase()] = data;
+      }
     });
+
+    if (typeof window !== "undefined" && Object.keys(res).length > 0) {
+      try {
+        localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(res));
+      } catch (e) { /* ignore */ }
+    }
+
     return res;
   } catch (e) {
-    console.error("Firebase get driver overrides failed:", e);
-    return {};
+    console.warn("Firebase get driver overrides failed (using localStorage):", e);
+    return localOverrides;
   }
 }
 
 export async function saveDriverOverride(override: DriverOverride): Promise<void> {
+  // 1. Immediately write to localStorage & dispatch custom sync event
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(OVERRIDES_STORAGE_KEY);
+      const existing: Record<string, DriverOverride> = stored ? JSON.parse(stored) : {};
+      
+      const prev = existing[override.driverId] || {};
+      const merged: DriverOverride = { ...prev, ...override };
+
+      existing[override.driverId] = merged;
+      if (override.driverId) {
+        existing[override.driverId.toLowerCase()] = merged;
+      }
+      if (override.code) {
+        existing[override.code.toLowerCase()] = merged;
+        existing[override.code.toUpperCase()] = merged;
+      }
+
+      localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(existing));
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("f1_overrides_updated", { detail: existing }));
+    } catch (e) {
+      console.warn("Failed to write driver override to localStorage:", e);
+    }
+  }
+
+  // 2. Persist to Firestore if online
   try {
     const docRef = doc(db, "driver_overrides", override.driverId);
     await setDoc(docRef, override, { merge: true });
   } catch (e) {
-    console.error("Firebase save driver override failed:", e);
-    throw e;
+    console.warn("Firebase save driver override failed (saved locally):", e);
   }
 }
 
 export async function clearAllDriverOverrides(): Promise<void> {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(OVERRIDES_STORAGE_KEY);
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("f1_overrides_updated", { detail: {} }));
+    } catch (e) {
+      console.warn("Failed to clear localStorage driver overrides:", e);
+    }
+  }
+
   try {
     const colRef = collection(db, "driver_overrides");
     const snap = await getDocs(colRef);
     const deletePromises = snap.docs.map(d => deleteDoc(d.ref));
     await Promise.all(deletePromises);
   } catch (e) {
-    console.error("Firebase clear driver overrides failed:", e);
+    console.warn("Firebase clear driver overrides failed:", e);
   }
 }
 

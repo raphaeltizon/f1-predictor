@@ -42,21 +42,31 @@ export default function Predictions() {
   const [sessionLocked, setSessionLocked] = useState(false);
   const [driverReplacements, setDriverReplacements] = useState<Record<string, string>>({});
 
-  // Real-time Firestore sync for driver active/inactive overrides and replacements across all users
+  // Real-time Firestore sync and event sync for driver active/inactive overrides and replacements across all users
   useEffect(() => {
-    const unsubOverrides = onSnapshot(collection(db, "driver_overrides"), async () => {
-      const updatedDrivers = await getDrivers("2026");
-      setDrivers(updatedDrivers);
-    }, (err) => console.warn("Driver overrides listener warning:", err));
+    let unsubOverrides = () => {};
+    try {
+      unsubOverrides = onSnapshot(collection(db, "driver_overrides"), async () => {
+        const updatedDrivers = await getDrivers("2026");
+        setDrivers(updatedDrivers);
+      }, (err) => console.warn("Driver overrides listener warning:", err));
+    } catch (e) {
+      console.warn("onSnapshot error:", e);
+    }
 
-    const unsubReplacements = onSnapshot(collection(db, "driver_replacements"), async () => {
-      if (selectedRound) {
-        const reps = await getDriverReplacements("2026", selectedRound);
-        setDriverReplacements(reps);
-      }
-    }, (err) => console.warn("Driver replacements listener warning:", err));
+    let unsubReplacements = () => {};
+    try {
+      unsubReplacements = onSnapshot(collection(db, "driver_replacements"), async () => {
+        if (selectedRound) {
+          const reps = await getDriverReplacements("2026", selectedRound);
+          setDriverReplacements(reps);
+        }
+      }, (err) => console.warn("Driver replacements listener warning:", err));
+    } catch (e) {
+      console.warn("onSnapshot error:", e);
+    }
 
-    const handleStorage = async () => {
+    const handleSync = async () => {
       const updatedDrivers = await getDrivers("2026");
       setDrivers(updatedDrivers);
       if (selectedRound) {
@@ -64,12 +74,17 @@ export default function Predictions() {
         setDriverReplacements(reps);
       }
     };
-    window.addEventListener("storage", handleStorage);
+
+    window.addEventListener("storage", handleSync);
+    window.addEventListener("f1_overrides_updated", handleSync);
+    window.addEventListener("f1_replacements_updated", handleSync);
 
     return () => {
       unsubOverrides();
       unsubReplacements();
-      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("storage", handleSync);
+      window.removeEventListener("f1_overrides_updated", handleSync);
+      window.removeEventListener("f1_replacements_updated", handleSync);
     };
   }, [selectedRound]);
 

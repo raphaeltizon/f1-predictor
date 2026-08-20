@@ -30,7 +30,7 @@ import {
 } from "@/lib/predictions";
 import { Settings, ShieldAlert, RefreshCw, CheckCircle, AlertTriangle, UserCheck, Users, ArrowRightLeft, Radio, Radar, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, onSnapshot } from "firebase/firestore";
 
 /** Shared helper to score a batch of predictions against results and update leaderboard */
 async function scoreAndSaveAll(
@@ -113,12 +113,43 @@ export default function Admin() {
         setDrivers(driversData);
         setAllDrivers(allDriversData);
       } catch (e) {
-        console.error(e);
+        console.error("Admin loadData error:", e);
       } finally {
         setLoading(false);
       }
     }
     loadData();
+
+    // Listen to real-time driver overrides & replacements
+    let unsubOverrides = () => {};
+    try {
+      unsubOverrides = onSnapshot(collection(db, "driver_overrides"), async () => {
+        const updatedDrivers = await getDrivers("2026");
+        const updatedAllDrivers = await getAllDriversIncludingInactive("2026");
+        setDrivers(updatedDrivers);
+        setAllDrivers(updatedAllDrivers);
+      }, (err) => console.warn("Admin driver overrides listener warning:", err));
+    } catch (e) {
+      console.warn("onSnapshot error:", e);
+    }
+
+    const handleSyncEvents = async () => {
+      const updatedDrivers = await getDrivers("2026");
+      const updatedAllDrivers = await getAllDriversIncludingInactive("2026");
+      setDrivers(updatedDrivers);
+      setAllDrivers(updatedAllDrivers);
+    };
+
+    window.addEventListener("storage", handleSyncEvents);
+    window.addEventListener("f1_overrides_updated", handleSyncEvents);
+    window.addEventListener("f1_replacements_updated", handleSyncEvents);
+
+    return () => {
+      unsubOverrides();
+      window.removeEventListener("storage", handleSyncEvents);
+      window.removeEventListener("f1_overrides_updated", handleSyncEvents);
+      window.removeEventListener("f1_replacements_updated", handleSyncEvents);
+    };
   }, []);
 
   const addLog = useCallback((msg: string) => {
@@ -245,16 +276,47 @@ export default function Admin() {
 
   const handleToggleDriverActive = async (driverId: string, currentlyActive: boolean) => {
     const targetDriver = allDrivers.find(d => d.driverId === driverId);
-    await saveDriverOverride({
-      driverId,
-      code: targetDriver?.code,
-      isActive: !currentlyActive,
-    });
-    const updatedDrivers = await getDrivers("2026");
-    const updatedAllDrivers = await getAllDriversIncludingInactive("2026");
-    setDrivers(updatedDrivers);
-    setAllDrivers(updatedAllDrivers);
-    addLog(`[LINEUP] ${targetDriver?.code || driverId.toUpperCase()} marked as ${!currentlyActive ? "ACTIVE" : "INACTIVE"}`);
+    const newActiveState = !currentlyActive;
+
+    // 1. Instant Optimistic State Update for instantaneous UI response
+    setAllDrivers(prev => prev.map(d => {
+      if (d.driverId === driverId || (targetDriver?.code && d.code === targetDriver.code)) {
+        return { ...d, isActive: newActiveState };
+      }
+      return d;
+    }));
+
+    if (!newActiveState) {
+      setDrivers(prev => prev.filter(d => d.driverId !== driverId && (!targetDriver?.code || d.code !== targetDriver.code)));
+    } else if (targetDriver) {
+      setDrivers(prev => {
+        if (prev.some(d => d.driverId === driverId || (targetDriver.code && d.code === targetDriver.code))) {
+          return prev.map(d => (d.driverId === driverId || d.code === targetDriver.code ? { ...d, isActive: true } : d));
+        }
+        return [...prev, { ...targetDriver, isActive: true }];
+      });
+    }
+
+    try {
+      await saveDriverOverride({
+        driverId,
+        code: targetDriver?.code,
+        familyName: targetDriver?.familyName,
+        givenName: targetDriver?.givenName,
+        constructorId: targetDriver?.constructorId,
+        constructorName: targetDriver?.constructorName,
+        teamColor: targetDriver?.teamColor,
+        isActive: newActiveState,
+      });
+      const updatedDrivers = await getDrivers("2026");
+      const updatedAllDrivers = await getAllDriversIncludingInactive("2026");
+      setDrivers(updatedDrivers);
+      setAllDrivers(updatedAllDrivers);
+      addLog(`[LINEUP] ${targetDriver?.code || driverId.toUpperCase()} marked as ${newActiveState ? "ACTIVE" : "INACTIVE"}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error saving";
+      addLog(`[LINEUP NOTICE] ${targetDriver?.code || driverId.toUpperCase()} saved: ${msg}`);
+    }
   };
 
   const handleSaveReplacementRule = async () => {
@@ -755,40 +817,71 @@ export default function Admin() {
             </div>
 
             {/* Quick Driver Active/Inactive Toggle */}
+            {/* Quick Driver Active/Inactive Toggle */}
             <div className="border-t border-border/50 pt-4">
-              <h4 className="text-xs font-bold text-white font-mono uppercase flex items-center gap-1.5 mb-3">
-                <Eye className="h-3.5 w-3.5 text-accent" />
-                Quick Driver Active/Inactive Toggle
-              </h4>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <h4 className="text-xs font-bold text-white font-mono uppercase flex items-center gap-1.5">
+                  <Eye className="h-3.5 w-3.5 text-accent" />
+                  Quick Driver Active/Inactive Toggle
+                </h4>
+                <div className="flex items-center gap-3 text-[10px] font-mono">
+                  <span className="text-secondary font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-secondary inline-block"></span>
+                    {allDrivers.filter(d => d.isActive !== false).length} Active
+                  </span>
+                  <span className="text-red-400 font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>
+                    {allDrivers.filter(d => d.isActive === false).length} Inactive
+                  </span>
+                </div>
+              </div>
               <p className="text-[10px] text-slate-400 mb-3">
-                Mark drivers as inactive to hide them from prediction pools. Use this when a driver is not participating in a race weekend.
+                Click any driver below to mark them active or inactive. Inactive drivers are immediately excluded from prediction pools.
               </p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[300px] overflow-y-auto pr-1">
-                {allDrivers.map(d => (
-                  <button
-                    key={d.driverId}
-                    onClick={() => handleToggleDriverActive(d.driverId, d.isActive !== false)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold transition-all ${
-                      d.isActive !== false
-                        ? "bg-surface border-border text-white hover:border-red-500/40 hover:text-red-400"
-                        : "bg-red-500/10 border-red-500/30 text-red-400 hover:border-secondary/40 hover:text-secondary"
-                    }`}
-                  >
-                    {d.isActive !== false ? (
-                      <Eye className="h-3.5 w-3.5 text-secondary shrink-0" />
-                    ) : (
-                      <EyeOff className="h-3.5 w-3.5 text-red-400 shrink-0" />
-                    )}
-                    <div
-                      className="w-1.5 h-5 rounded-sm shrink-0"
-                      style={{ backgroundColor: d.teamColor }}
-                    />
-                    <span className="truncate">{d.code} - {d.familyName}</span>
-                    {d.isActive === false && (
-                      <span className="text-[9px] font-mono bg-red-500/20 px-1 rounded">OFF</span>
-                    )}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[340px] overflow-y-auto pr-1 select-none">
+                {allDrivers.map(d => {
+                  const isActive = d.isActive !== false;
+                  return (
+                    <button
+                      key={d.driverId}
+                      type="button"
+                      onClick={() => handleToggleDriverActive(d.driverId, isActive)}
+                      title={isActive ? `Click to deactivate ${d.code} (${d.familyName})` : `Click to activate ${d.code} (${d.familyName})`}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer active:scale-95 text-left ${
+                        isActive
+                          ? "bg-surface hover:bg-red-500/10 border-border hover:border-red-500/40 text-white hover:text-red-300 shadow-sm"
+                          : "bg-red-500/15 hover:bg-emerald-500/15 border-red-500/40 hover:border-emerald-500/40 text-red-300 hover:text-emerald-300 shadow-neon-red"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isActive ? (
+                          <Eye className="h-3.5 w-3.5 text-secondary shrink-0" />
+                        ) : (
+                          <EyeOff className="h-3.5 w-3.5 text-red-400 shrink-0" />
+                        )}
+                        <div
+                          className="w-1.5 h-5 rounded-sm shrink-0"
+                          style={{ backgroundColor: d.teamColor }}
+                        />
+                        <div className="truncate">
+                          <span className={`font-bold ${isActive ? "text-white" : "text-red-300 line-through opacity-80"}`}>
+                            {d.code}
+                          </span>
+                          <span className="text-slate-400 text-[11px] ml-1 truncate">
+                            - {d.familyName}
+                          </span>
+                        </div>
+                      </div>
+                      <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ml-1.5 ${
+                        isActive
+                          ? "bg-secondary/15 text-secondary border border-secondary/30"
+                          : "bg-red-500/20 text-red-300 border border-red-500/40"
+                      }`}>
+                        {isActive ? "ON" : "OFF"}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

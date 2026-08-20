@@ -57,18 +57,33 @@ export function isSessionLocked(dateStr: string, timeStr?: string): boolean {
 }
 
 // Driver Replacement mapping functions (e.g. { "hadjar": "lawson" })
+const REPLACEMENTS_STORAGE_KEY = "f1_driver_replacements";
+
 export async function saveDriverReplacements(
   season: string,
   round: string,
   replacements: Record<string, string>
 ): Promise<void> {
   const docId = `${season}_${round}`;
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(REPLACEMENTS_STORAGE_KEY);
+      const existing = stored ? JSON.parse(stored) : {};
+      existing[docId] = replacements;
+      localStorage.setItem(REPLACEMENTS_STORAGE_KEY, JSON.stringify(existing));
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("f1_replacements_updated", { detail: { docId, replacements } }));
+    } catch (e) {
+      console.warn("Failed to write driver replacements to localStorage:", e);
+    }
+  }
+
   try {
     const docRef = doc(db, "driver_replacements", docId);
     await setDoc(docRef, { season, round, replacements, updatedAt: Date.now() });
   } catch (e) {
-    console.error("Firebase save driver replacements failed:", e);
-    throw e;
+    console.warn("Firebase save driver replacements failed (saved locally):", e);
   }
 }
 
@@ -77,26 +92,59 @@ export async function getDriverReplacements(
   round: string
 ): Promise<Record<string, string>> {
   const docId = `${season}_${round}`;
+  let localReps: Record<string, string> = {};
+
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem(REPLACEMENTS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed[docId]) {
+          localReps = parsed[docId];
+        }
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   try {
     const docRef = doc(db, "driver_replacements", docId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return snap.data().replacements || {};
+      const data = snap.data().replacements || {};
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem(REPLACEMENTS_STORAGE_KEY);
+          const existing = stored ? JSON.parse(stored) : {};
+          existing[docId] = data;
+          localStorage.setItem(REPLACEMENTS_STORAGE_KEY, JSON.stringify(existing));
+        } catch (e) { /* ignore */ }
+      }
+      return data;
     }
   } catch (e) {
-    console.error("Firebase get driver replacements failed:", e);
+    console.warn("Firebase get driver replacements failed (using localStorage):", e);
   }
-  return {};
+  return localReps;
 }
 
 export async function clearAllDriverReplacements(): Promise<void> {
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(REPLACEMENTS_STORAGE_KEY);
+      window.dispatchEvent(new Event("storage"));
+      window.dispatchEvent(new CustomEvent("f1_replacements_updated", { detail: {} }));
+    } catch (e) {
+      console.warn("Failed to clear localStorage driver replacements:", e);
+    }
+  }
+
   try {
     const colRef = collection(db, "driver_replacements");
     const snap = await getDocs(colRef);
     const deletePromises = snap.docs.map((d) => deleteDoc(d.ref));
     await Promise.all(deletePromises);
   } catch (e) {
-    console.error("Firebase clear driver replacements failed:", e);
+    console.warn("Firebase clear driver replacements failed:", e);
   }
 }
 
