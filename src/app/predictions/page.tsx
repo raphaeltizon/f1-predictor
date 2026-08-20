@@ -220,6 +220,10 @@ export default function Predictions() {
   const selectDriver = (driverId: string) => {
     if (sessionLocked) return;
     
+    // Check if driver is inactive
+    const driverObj = drivers.find(d => d.driverId === driverId);
+    if (driverObj && driverObj.isActive === false) return;
+
     // Check if driver is already in prediction list
     if (predictedTop10.includes(driverId)) return;
 
@@ -257,11 +261,11 @@ export default function Predictions() {
     setPredictedTop10(newList);
   };
 
-  // Fill in remaining empty spots with highest ranked remaining drivers
+  // Fill in remaining empty spots with highest ranked remaining active drivers
   const autoFillRemaining = () => {
     if (sessionLocked) return;
     const newList = [...predictedTop10];
-    const availableDrivers = drivers.filter(d => !newList.includes(d.driverId));
+    const availableDrivers = drivers.filter(d => d.isActive !== false && !newList.includes(d.driverId));
     
     let avIdx = 0;
     for (let i = 0; i < 10; i++) {
@@ -328,14 +332,19 @@ export default function Predictions() {
   };
 
   // Memoize computed values
+  const activeDrivers = useMemo(
+    () => drivers.filter(d => d.isActive !== false),
+    [drivers]
+  );
+
   const selectedDriverObjects = useMemo(
     () => predictedTop10.map(id => drivers.find(d => d.driverId === id) || null),
     [predictedTop10, drivers]
   );
 
   const remainingDrivers = useMemo(
-    () => drivers.filter(d => !predictedTop10.includes(d.driverId)),
-    [drivers, predictedTop10]
+    () => activeDrivers.filter(d => !predictedTop10.includes(d.driverId)),
+    [activeDrivers, predictedTop10]
   );
 
   if (loading) {
@@ -604,7 +613,7 @@ export default function Predictions() {
                       className="bg-background text-xs font-semibold text-white px-3.5 py-2.5 rounded-lg border border-border focus:border-secondary outline-none w-full md:w-60 cursor-pointer"
                     >
                       <option value="">-- Nominate Driver --</option>
-                      {drivers.map((d) => (
+                      {activeDrivers.map((d) => (
                         <option key={d.driverId} value={d.driverId}>
                           {d.code} - {d.givenName} {d.familyName} ({d.constructorName})
                         </option>
@@ -662,7 +671,7 @@ export default function Predictions() {
                   </p>
                   
                   <div className="grid grid-cols-2 gap-2 max-h-[550px] overflow-y-auto pr-1">
-                    {drivers.map((driver) => {
+                    {activeDrivers.map((driver) => {
                       const isSelected = predictedTop10.includes(driver.driverId);
                       return (
                         <button

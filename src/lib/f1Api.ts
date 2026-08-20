@@ -117,6 +117,38 @@ export function normalizeConstructorId(teamName: string): string {
 
 const OVERRIDES_STORAGE_KEY = "f1_driver_overrides";
 
+export function getDriverAliases(identifier: { driverId?: string; code?: string; familyName?: string; givenName?: string }): string[] {
+  const aliases = new Set<string>();
+  if (identifier.driverId) {
+    aliases.add(identifier.driverId);
+    aliases.add(identifier.driverId.toLowerCase());
+  }
+  if (identifier.code) {
+    aliases.add(identifier.code.toLowerCase());
+    aliases.add(identifier.code.toUpperCase());
+  }
+
+  // Check fallback lineup for known mappings (e.g. doo <-> doohan, had <-> hadjar)
+  const fallback = getFallbackLineup();
+  const match = fallback.find(f => {
+    const dId = identifier.driverId?.toLowerCase();
+    const fId = f.driverId.toLowerCase();
+    const codeMatch = identifier.code && f.code.toUpperCase() === identifier.code.toUpperCase();
+    const familyMatch = identifier.familyName && f.familyName.toLowerCase() === identifier.familyName.toLowerCase();
+    const idMatch = dId && (fId === dId || (fId.length >= 3 && dId.length >= 3 && (fId.startsWith(dId) || dId.startsWith(fId))));
+    return codeMatch || familyMatch || idMatch;
+  });
+
+  if (match) {
+    aliases.add(match.driverId);
+    aliases.add(match.driverId.toLowerCase());
+    aliases.add(match.code.toLowerCase());
+    aliases.add(match.code.toUpperCase());
+  }
+
+  return Array.from(aliases);
+}
+
 export async function getDriverOverrides(): Promise<Record<string, DriverOverride>> {
   let localOverrides: Record<string, DriverOverride> = {};
   if (typeof window !== "undefined") {
@@ -133,16 +165,41 @@ export async function getDriverOverrides(): Promise<Record<string, DriverOverrid
   try {
     const colRef = collection(db, "driver_overrides");
     const snap = await getDocs(colRef);
-    const res: Record<string, DriverOverride> = { ...localOverrides };
-    snap.docs.forEach(doc => {
-      const data = doc.data() as DriverOverride;
-      res[doc.id] = data;
-      if (data.driverId) {
-        res[data.driverId.toLowerCase()] = data;
-      }
-      if (data.code) {
-        res[data.code.toLowerCase()] = data;
-        res[data.code.toUpperCase()] = data;
+    const res: Record<string, DriverOverride> = {};
+    
+    // 1. Process all documents from Firestore
+    const rawDocs: DriverOverride[] = [];
+    snap.docs.forEach(docSnap => {
+      const data = docSnap.data() as DriverOverride;
+      rawDocs.push({ ...data, driverId: data.driverId || docSnap.id });
+    });
+
+    // 2. Populate all alias keys for each doc
+    rawDocs.forEach(data => {
+      const aliases = getDriverAliases(data);
+      if (data.driverId) aliases.push(data.driverId);
+
+      aliases.forEach(alias => {
+        const existing = res[alias];
+        if (existing) {
+          res[alias] = {
+            ...existing,
+            ...data,
+            // If ANY doc for this driver specifies isActive: false, keep isActive: false
+            isActive: (data.isActive === false || existing.isActive === false) 
+              ? false 
+              : (data.isActive ?? existing.isActive),
+          };
+        } else {
+          res[alias] = { ...data };
+        }
+      });
+    });
+
+    // 3. Merge in any local overrides that aren't yet in Firestore
+    Object.keys(localOverrides).forEach(key => {
+      if (!res[key]) {
+        res[key] = localOverrides[key];
       }
     });
 
@@ -160,7 +217,12 @@ export async function getDriverOverrides(): Promise<Record<string, DriverOverrid
 }
 
 export async function saveDriverOverride(override: DriverOverride): Promise<void> {
-  // 1. Immediately write to localStorage & dispatch custom sync event
+  const aliases = getDriverAliases(override);
+  if (override.driverId && !aliases.includes(override.driverId)) {
+    aliases.push(override.driverId);
+  }
+
+  // 1. Immediately write to localStorage across all aliases & dispatch custom sync event
   if (typeof window !== "undefined") {
     try {
       const stored = localStorage.getItem(OVERRIDES_STORAGE_KEY);
@@ -169,14 +231,10 @@ export async function saveDriverOverride(override: DriverOverride): Promise<void
       const prev = existing[override.driverId] || {};
       const merged: DriverOverride = { ...prev, ...override };
 
-      existing[override.driverId] = merged;
-      if (override.driverId) {
-        existing[override.driverId.toLowerCase()] = merged;
-      }
-      if (override.code) {
-        existing[override.code.toLowerCase()] = merged;
-        existing[override.code.toUpperCase()] = merged;
-      }
+      aliases.forEach(alias => {
+        existing[alias] = merged;
+        existing[alias.toLowerCase()] = merged;
+      });
 
       localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(existing));
       window.dispatchEvent(new Event("storage"));
@@ -186,10 +244,31 @@ export async function saveDriverOverride(override: DriverOverride): Promise<void
     }
   }
 
-  // 2. Persist to Firestore if online
+  // 2. Persist to Firestore across all relevant doc IDs so no stale doc remains
   try {
-    const docRef = doc(db, "driver_overrides", override.driverId);
-    await setDoc(docRef, override, { merge: true });
+    const docIdsToSave = new Set<string>();
+    docIdsToSave.add(override.driverId);
+    docIdsToSave.add(override.driverId.toLowerCase());
+    if (override.code) {
+      docIdsToSave.add(override.code.toLowerCase());
+    }
+
+    // Find fallback match to also update fallback docId (e.g. "doohan" alongside "doo", "hadjar" alongside "had")
+    const fallbackMatch = getFallbackLineup().find(f => 
+      (override.code && f.code.toUpperCase() === override.code.toUpperCase()) ||
+      (override.familyName && f.familyName.toLowerCase() === override.familyName.toLowerCase()) ||
+      f.driverId.toLowerCase() === override.driverId.toLowerCase()
+    );
+    if (fallbackMatch) {
+      docIdsToSave.add(fallbackMatch.driverId.toLowerCase());
+    }
+
+    const savePromises = Array.from(docIdsToSave).map(id => {
+      const docRef = doc(db, "driver_overrides", id);
+      return setDoc(docRef, { ...override, driverId: id }, { merge: true });
+    });
+
+    await Promise.all(savePromises);
   } catch (e) {
     console.warn("Firebase save driver override failed (saved locally):", e);
   }
@@ -230,44 +309,61 @@ export function findDriverOverride(
   const codeLower = driver.code?.toLowerCase();
   const codeUpper = driver.code?.toUpperCase();
 
-  // 1. Direct key match
-  if (overrides[driver.driverId]) return overrides[driver.driverId];
-  if (overrides[driverIdLower]) return overrides[driverIdLower];
-  if (codeLower && overrides[codeLower]) return overrides[codeLower];
-  if (codeUpper && overrides[codeUpper]) return overrides[codeUpper];
+  const matches: DriverOverride[] = [];
 
-  // 2. Iterate through all override entries and compare fields
-  for (const key in overrides) {
-    const ov = overrides[key];
-    if (!ov) continue;
-
-    const ovIdLower = (ov.driverId || key).toLowerCase();
+  const checkMatch = (ov: DriverOverride, key?: string) => {
+    if (!ov) return false;
+    const ovIdLower = (ov.driverId || key || "").toLowerCase();
     const ovCodeUpper = (ov.code || "").toUpperCase();
+    const ovCodeLower = (ov.code || "").toLowerCase();
 
-    // Match on ID
-    if (ovIdLower === driverIdLower) return ov;
+    if (ovIdLower === driverIdLower) return true;
+    if (codeLower && (ovIdLower === codeLower || ovCodeLower === codeLower || ovCodeUpper === codeUpper)) return true;
+    if (codeUpper && (ovCodeUpper === codeUpper || ovIdLower === codeLower)) return true;
 
-    // Match on Code (e.g., "DOO" == "DOO" or ov.driverId "doo" == "doo")
-    if (codeLower && (ovIdLower === codeLower || ovCodeUpper === codeUpper)) return ov;
-    if (codeUpper && (ovCodeUpper === codeUpper || ovIdLower === codeLower)) return ov;
-
-    // Match surname / family name / slug containing code or id
     if (driver.familyName) {
       const familyLower = driver.familyName.toLowerCase();
       if (ovIdLower === familyLower || familyLower.includes(ovIdLower) || ovIdLower.includes(familyLower)) {
-        return ov;
+        return true;
       }
     }
 
-    // Check if one ID contains the other (e.g., "doohan" contains "doo" or vice versa)
     if (ovIdLower.length >= 3 && driverIdLower.length >= 3) {
       if (driverIdLower.startsWith(ovIdLower) || ovIdLower.startsWith(driverIdLower)) {
-        return ov;
+        return true;
       }
+    }
+
+    return false;
+  };
+
+  // Direct lookups
+  if (overrides[driver.driverId]) matches.push(overrides[driver.driverId]);
+  if (overrides[driverIdLower] && !matches.includes(overrides[driverIdLower])) matches.push(overrides[driverIdLower]);
+  if (codeLower && overrides[codeLower] && !matches.includes(overrides[codeLower])) matches.push(overrides[codeLower]);
+  if (codeUpper && overrides[codeUpper] && !matches.includes(overrides[codeUpper])) matches.push(overrides[codeUpper]);
+
+  // Comprehensive iteration for cross-ID aliases
+  for (const key in overrides) {
+    const ov = overrides[key];
+    if (ov && !matches.includes(ov) && checkMatch(ov, key)) {
+      matches.push(ov);
     }
   }
 
-  return undefined;
+  if (matches.length === 0) return undefined;
+
+  // Merge attributes across matches
+  const merged: DriverOverride = Object.assign({}, ...matches);
+
+  // CRITICAL: If ANY matching record specifies isActive: false, this driver MUST be considered inactive
+  if (matches.some(m => m.isActive === false)) {
+    merged.isActive = false;
+  } else if (matches.some(m => m.isActive === true)) {
+    merged.isActive = true;
+  }
+
+  return merged;
 }
 
 export async function getOpenF1LatestDrivers(): Promise<Driver[]> {
