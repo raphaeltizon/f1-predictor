@@ -12,9 +12,8 @@ import {
   QualiResult, 
   RaceResult 
 } from "@/lib/f1Api";
-import { useAuth } from "@/context/AuthContext";
-import { db, isFirebaseConfigured } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, collection, onSnapshot } from "firebase/firestore";
 import { getSessionDate, isSessionLocked } from "@/lib/predictions";
 import Link from "next/link";
 import { 
@@ -43,8 +42,6 @@ interface SessionOption {
 }
 
 export default function Results() {
-  const { isMock } = useAuth();
-  
   // States for F1 data
   const [races, setRaces] = useState<Race[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -58,18 +55,27 @@ export default function Results() {
   // Results states
   const [qualiResults, setQualiResults] = useState<QualiResult[]>([]);
   const [raceResults, setRaceResults] = useState<RaceResult[]>([]);
-  const [mockResults, setMockResults] = useState<{ driverIds: string[]; fastestLapDriverId?: string } | null>(null);
+  const [sprintQualiResults, setSprintQualiResults] = useState<{ driverIds: string[]; fastestLapDriverId?: string } | null>(null);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [resultsError, setResultsError] = useState<string | null>(null);
 
-  // Listen for storage events (admin lineup updates or mock updates)
+  // Real-time Firestore sync for driver overrides
   useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "driver_overrides"), async () => {
+      const updatedDrivers = await getDrivers("2026");
+      setDrivers(updatedDrivers);
+    }, (err) => console.warn("Results driver overrides listener warning:", err));
+
     const handleStorage = async () => {
       const updatedDrivers = await getDrivers("2026");
       setDrivers(updatedDrivers);
     };
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener("storage", handleStorage);
+    };
   }, []);
 
   // Initialize schedule and drivers list
@@ -137,7 +143,7 @@ export default function Results() {
     setResultsError(null);
     setQualiResults([]);
     setRaceResults([]);
-    setMockResults(null);
+    setSprintQualiResults(null);
 
     const sessionType = activeSession.key;
     const isPractice = activeSession.isPractice;
@@ -150,73 +156,39 @@ export default function Results() {
     async function loadSessionResults() {
       setResultsLoading(true);
       try {
-        if (isMock) {
-          // Load simulated results in mock mode from localStorage
-          const resultsKey = "f1_local_results";
-          const stored = localStorage.getItem(resultsKey);
-          if (stored) {
-            const allMockResults = JSON.parse(stored);
-            const key = `2026_${selectedRound}_${sessionType}`;
-            if (allMockResults[key]) {
-              setMockResults(allMockResults[key]);
-              setResultsLoading(false);
-              return;
-            }
+        if (sessionType === "race") {
+          const data = await getRaceResults(selectedRound, "2026");
+          if (data && data.length > 0) {
+            setRaceResults(data);
+          } else {
+            setResultsError("empty");
           }
-          // If no mock data generated yet, show error explaining they need to generate it
-          setResultsError("no_mock_data");
-        } else {
-          // Real mode: fetch from Jolpica API or fetch manual sprintQuali results
-          if (sessionType === "race") {
-            const data = await getRaceResults(selectedRound, "2026");
-            if (data && data.length > 0) {
-              setRaceResults(data);
-            } else {
-              setResultsError("empty");
-            }
-          } else if (sessionType === "quali") {
-            const data = await getQualifyingResults(selectedRound, "2026");
-            if (data && data.length > 0) {
-              setQualiResults(data);
-            } else {
-              setResultsError("empty");
-            }
-          } else if (sessionType === "sprint") {
-            const data = await getSprintResults(selectedRound, "2026");
-            if (data && data.length > 0) {
-              setRaceResults(data); // Sprint results share RaceResult format
-            } else {
-              setResultsError("empty");
-            }
-          } else if (sessionType === "sprintQuali") {
-            // Load manually entered Sprint Shootout results
-            if (isFirebaseConfigured && db) {
-              const resRef = doc(db, "results", `2026_${selectedRound}_sprintQuali`);
-              const resSnap = await getDoc(resRef);
-              if (resSnap.exists()) {
-                const resData = resSnap.data();
-                setMockResults({
-                  driverIds: resData.driverIds,
-                  fastestLapDriverId: resData.fastestLapDriverId
-                });
-              } else {
-                setResultsError("empty");
-              }
-            } else {
-              const resultsKey = "f1_local_results";
-              const stored = localStorage.getItem(resultsKey);
-              if (stored) {
-                const allMockResults = JSON.parse(stored);
-                const key = `2026_${selectedRound}_sprintQuali`;
-                if (allMockResults[key]) {
-                  setMockResults(allMockResults[key]);
-                } else {
-                  setResultsError("empty");
-                }
-              } else {
-                setResultsError("empty");
-              }
-            }
+        } else if (sessionType === "quali") {
+          const data = await getQualifyingResults(selectedRound, "2026");
+          if (data && data.length > 0) {
+            setQualiResults(data);
+          } else {
+            setResultsError("empty");
+          }
+        } else if (sessionType === "sprint") {
+          const data = await getSprintResults(selectedRound, "2026");
+          if (data && data.length > 0) {
+            setRaceResults(data); // Sprint results share RaceResult format
+          } else {
+            setResultsError("empty");
+          }
+        } else if (sessionType === "sprintQuali") {
+          // Load manually entered Sprint Shootout results from Firestore
+          const resRef = doc(db, "results", `2026_${selectedRound}_sprintQuali`);
+          const resSnap = await getDoc(resRef);
+          if (resSnap.exists()) {
+            const resData = resSnap.data();
+            setSprintQualiResults({
+              driverIds: resData.driverIds || [],
+              fastestLapDriverId: resData.fastestLapDriverId
+            });
+          } else {
+            setResultsError("empty");
           }
         }
       } catch (e) {
@@ -228,7 +200,7 @@ export default function Results() {
     }
 
     loadSessionResults();
-  }, [selectedRound, activeSession, isMock, activeRace]);
+  }, [selectedRound, activeSession, activeRace]);
 
   // Helper to dynamically build available sessions list
   const getAvailableSessions = useCallback((race: Race): SessionOption[] => {
@@ -455,95 +427,52 @@ export default function Results() {
                 /* Results error / empty states handling */
                 <div className="glass-panel p-10 rounded-2xl text-center space-y-4 max-w-xl mx-auto border border-border">
                   <AlertCircle className="h-12 w-12 text-muted mx-auto" />
-                  
-                  {resultsError === "no_mock_data" ? (
-                    <>
-                      <h3 className="text-lg font-bold text-white">Results Simulation Required</h3>
-                      <p className="text-muted text-xs leading-relaxed">
-                        You are currently running in <strong>Mock Mode</strong> (Firebase is not configured). Results for this round have not been generated yet. Go to the Admin Panel to simulate and score this session.
-                      </p>
-                      <div className="pt-2">
-                        <Link
-                          href="/admin"
-                          className="f1-skew-btn bg-surface hover:bg-surface-hover border border-border px-5 py-2 text-xs font-bold text-white inline-block transition-all active:scale-95"
-                        >
-                          <span>
-                            <Settings className="h-3.5 w-3.5 inline mr-1" />
-                            Go to Admin Panel
-                          </span>
-                        </Link>
-                      </div>
-                    </>
+                  <h3 className="text-lg font-bold text-white">Standings Not Available</h3>
+                  {getSessionDate(activeSession.dateStr, activeSession.timeStr).getTime() > Date.now() ? (
+                    <p className="text-muted text-xs">
+                      This session has not started yet. Official classifications will display here once the session concludes.
+                    </p>
                   ) : (
-                    <>
-                      <h3 className="text-lg font-bold text-white">Standings Not Available</h3>
-                      {getSessionDate(activeSession.dateStr, activeSession.timeStr).getTime() > Date.now() ? (
-                        <p className="text-muted text-xs">
-                          This session has not started yet. Official classifications will display here once the session concludes.
-                        </p>
-                      ) : (
-                        <p className="text-muted text-xs leading-relaxed">
-                          Official standings for this session have not been published by the F1 API yet. Results are usually updated shortly after the chequered flag is waved.
-                        </p>
-                      )}
-                    </>
+                    <p className="text-muted text-xs leading-relaxed">
+                      Official standings for this session have not been published by the F1 API yet. Results are usually updated shortly after the chequered flag is waved.
+                    </p>
                   )}
                 </div>
               ) : (
                 /* Standings lists table */
                 <div className="space-y-6">
                   {/* GP Race stats summaries: Fastest Lap & Winner */}
-                  {activeSession.key === "race" && (fastestLapDriver || (isMock && mockResults?.fastestLapDriverId)) && (
+                  {activeSession.key === "race" && raceResults.length > 0 && (
                     <div className="grid gap-4 sm:grid-cols-2">
                       {/* Winner Showcase Card */}
                       <div className="glass-panel p-4 rounded-xl flex items-center justify-between border-l-4 border-l-yellow-400">
                         <div className="space-y-0.5">
                           <span className="text-[10px] font-bold text-muted uppercase font-mono">Round Winner</span>
                           <h4 className="text-sm font-extrabold text-white">
-                            {isMock ? (
-                              (() => {
-                                const w = drivers.find(d => d.driverId === mockResults?.driverIds[0]);
-                                return w ? `${w.givenName} ${w.familyName}` : "Unknown Driver";
-                              })()
-                            ) : (
-                              raceResults[0] ? raceResults[0].driverName : "N/A"
-                            )}
+                            {raceResults[0] ? raceResults[0].driverName : "N/A"}
                           </h4>
                           <span className="text-[10px] text-muted font-semibold uppercase">
-                            {isMock ? (
-                              drivers.find(d => d.driverId === mockResults?.driverIds[0])?.constructorName || ""
-                            ) : (
-                              raceResults[0] ? raceResults[0].constructorName : ""
-                            )}
+                            {raceResults[0] ? raceResults[0].constructorName : ""}
                           </span>
                         </div>
                         <Trophy className="h-8 w-8 text-yellow-400 opacity-80" />
                       </div>
 
                       {/* Fastest Lap Showcase Card */}
-                      <div className="glass-panel p-4 rounded-xl flex items-center justify-between border-l-4 border-l-purple-500">
-                        <div className="space-y-0.5">
-                          <span className="text-[10px] font-bold text-muted uppercase font-mono">Fastest Lap Award</span>
-                          <h4 className="text-sm font-extrabold text-white">
-                            {isMock ? (
-                              (() => {
-                                const fl = drivers.find(d => d.driverId === mockResults?.fastestLapDriverId);
-                                return fl ? `${fl.givenName} ${fl.familyName}` : "None";
-                              })()
-                            ) : (
-                              fastestLapDriver ? fastestLapDriver.driverName : "N/A"
-                            )}
-                          </h4>
-                          <span className="text-[10px] text-muted font-semibold uppercase">
-                            {isMock ? (
-                              drivers.find(d => d.driverId === mockResults?.fastestLapDriverId)?.constructorName || ""
-                            ) : (
-                              fastestLapDriver ? fastestLapDriver.constructorName : ""
-                            )}
-                          </span>
+                      {fastestLapDriver && (
+                        <div className="glass-panel p-4 rounded-xl flex items-center justify-between border-l-4 border-l-purple-500">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] font-bold text-muted uppercase font-mono">Fastest Lap Award</span>
+                            <h4 className="text-sm font-extrabold text-white">
+                              {fastestLapDriver.driverName}
+                            </h4>
+                            <span className="text-[10px] text-muted font-semibold uppercase">
+                              {fastestLapDriver.constructorName}
+                            </span>
+                          </div>
+                          <Zap className="h-8 w-8 text-purple-400 opacity-80 animate-pulse" />
                         </div>
-                        <Zap className="h-8 w-8 text-purple-400 opacity-80 animate-pulse" />
-                      </div>
+                      )}
                     </div>
                   )}
 
@@ -572,17 +501,11 @@ export default function Results() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/60">
-                           {(isMock || activeSession.key === "sprintQuali") && mockResults ? (
-                            /* RENDER MOCK STANDINGS */
-                            mockResults.driverIds.map((driverId, idx) => {
+                          {activeSession.key === "sprintQuali" && sprintQualiResults ? (
+                            /* RENDER SPRINT SHOOTOUT STANDINGS */
+                            sprintQualiResults.driverIds.map((driverId, idx) => {
                               const driverObj = drivers.find(d => d.driverId === driverId);
                               const position = idx + 1;
-                              const isFastestLap = mockResults.fastestLapDriverId === driverId;
-                              
-                              // Mock details builder
-                              const mockPoints = activeSession.key === "sprint"
-                                ? [8, 7, 6, 5, 4, 3, 2, 1][idx] || 0
-                                : [25, 18, 15, 12, 10, 8, 6, 4, 2, 1][idx] || 0;
 
                               return (
                                 <tr key={driverId} className="hover:bg-surface/30 transition-all font-medium">
@@ -598,39 +521,15 @@ export default function Results() {
                                       <span className="text-sm font-bold text-white flex items-center gap-1.5">
                                         {driverObj ? `${driverObj.givenName} ${driverObj.familyName}` : driverId}
                                         <span className="font-mono text-xs text-muted">({driverObj?.code})</span>
-                                        {isFastestLap && (
-                                          <span className="text-[9px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider flex items-center gap-0.5">
-                                            <Zap className="h-2.5 w-2.5" />
-                                            FL
-                                          </span>
-                                        )}
                                       </span>
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 text-sm text-muted">
                                     {driverObj?.constructorName || "TBD"}
                                   </td>
-                                   {activeSession.key === "quali" || activeSession.key === "sprintQuali" ? (
-                                    <>
-                                      <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>
-                                      <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>
-                                      <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <td className="px-6 py-4 text-center text-sm text-white font-mono">
-                                        {activeSession.key === "sprint" ? "24" : "58"}
-                                      </td>
-                                      <td className="px-6 py-4 text-center text-xs">
-                                        <span className="bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded text-green-400 font-bold uppercase tracking-wider">
-                                          Finished
-                                        </span>
-                                      </td>
-                                      <td className="px-6 py-4 text-right font-mono text-sm font-black text-white">
-                                        +{mockPoints + (isFastestLap && activeSession.key === "race" && position <= 10 ? 1 : 0)} PTS
-                                      </td>
-                                    </>
-                                  )}
+                                  <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>
+                                  <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>
+                                  <td className="px-6 py-4 text-center text-xs font-mono text-muted">--</td>
                                 </tr>
                               );
                             })

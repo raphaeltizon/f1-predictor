@@ -1,5 +1,5 @@
-import { db, isFirebaseConfigured } from "./firebase";
-import { doc, setDoc, getDoc, collection, getDocs } from "firebase/firestore";
+import { db } from "./firebase";
+import { doc, setDoc, getDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 
 export interface Circuit {
   circuitId: string;
@@ -45,6 +45,7 @@ export interface Driver {
 
 export interface DriverOverride {
   driverId: string;
+  code?: string;
   constructorId?: string;
   constructorName?: string;
   teamColor?: string;
@@ -113,60 +114,93 @@ export function normalizeConstructorId(teamName: string): string {
 }
 
 export async function getDriverOverrides(): Promise<Record<string, DriverOverride>> {
-  if (isFirebaseConfigured && db) {
-    try {
-      const colRef = collection(db, "driver_overrides");
-      const snap = await getDocs(colRef);
-      const res: Record<string, DriverOverride> = {};
-      snap.docs.forEach(doc => {
-        res[doc.id] = doc.data() as DriverOverride;
-      });
-      return res;
-    } catch (e) {
-      console.error("Firebase get driver overrides failed:", e);
-    }
+  try {
+    const colRef = collection(db, "driver_overrides");
+    const snap = await getDocs(colRef);
+    const res: Record<string, DriverOverride> = {};
+    snap.docs.forEach(doc => {
+      res[doc.id] = doc.data() as DriverOverride;
+    });
+    return res;
+  } catch (e) {
+    console.error("Firebase get driver overrides failed:", e);
+    return {};
   }
-
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("f1_driver_overrides");
-    if (stored) {
-      try { return JSON.parse(stored); } catch (e) { /* ignore parse error */ }
-    }
-  }
-  return {};
 }
 
 export async function saveDriverOverride(override: DriverOverride): Promise<void> {
-  if (isFirebaseConfigured && db) {
-    try {
-      const docRef = doc(db, "driver_overrides", override.driverId);
-      await setDoc(docRef, override, { merge: true });
-    } catch (e) {
-      console.error("Firebase save driver override failed:", e);
-    }
-  }
-
-  if (typeof window !== "undefined") {
-    const key = "f1_driver_overrides";
-    const stored = localStorage.getItem(key);
-    let existing: Record<string, DriverOverride> = {};
-    if (stored) {
-      try { existing = JSON.parse(stored); } catch (e) { /* ignore parse error */ }
-    }
-    existing[override.driverId] = {
-      ...existing[override.driverId],
-      ...override,
-    };
-    localStorage.setItem(key, JSON.stringify(existing));
-    window.dispatchEvent(new Event("storage"));
+  try {
+    const docRef = doc(db, "driver_overrides", override.driverId);
+    await setDoc(docRef, override, { merge: true });
+  } catch (e) {
+    console.error("Firebase save driver override failed:", e);
+    throw e;
   }
 }
 
 export async function clearAllDriverOverrides(): Promise<void> {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("f1_driver_overrides");
-    window.dispatchEvent(new Event("storage"));
+  try {
+    const colRef = collection(db, "driver_overrides");
+    const snap = await getDocs(colRef);
+    const deletePromises = snap.docs.map(d => deleteDoc(d.ref));
+    await Promise.all(deletePromises);
+  } catch (e) {
+    console.error("Firebase clear driver overrides failed:", e);
   }
+}
+
+/**
+ * Helper to find an override for a driver across different ID schemes
+ * (e.g. OpenF1 code "doo" vs Ergast/Fallback "doohan").
+ */
+export function findDriverOverride(
+  driver: { driverId: string; code?: string; familyName?: string; givenName?: string },
+  overrides: Record<string, DriverOverride>
+): DriverOverride | undefined {
+  if (!overrides || Object.keys(overrides).length === 0) return undefined;
+
+  const driverIdLower = driver.driverId.toLowerCase();
+  const codeLower = driver.code?.toLowerCase();
+  const codeUpper = driver.code?.toUpperCase();
+
+  // 1. Direct key match
+  if (overrides[driver.driverId]) return overrides[driver.driverId];
+  if (overrides[driverIdLower]) return overrides[driverIdLower];
+  if (codeLower && overrides[codeLower]) return overrides[codeLower];
+  if (codeUpper && overrides[codeUpper]) return overrides[codeUpper];
+
+  // 2. Iterate through all override entries and compare fields
+  for (const key in overrides) {
+    const ov = overrides[key];
+    if (!ov) continue;
+
+    const ovIdLower = (ov.driverId || key).toLowerCase();
+    const ovCodeUpper = (ov.code || "").toUpperCase();
+
+    // Match on ID
+    if (ovIdLower === driverIdLower) return ov;
+
+    // Match on Code (e.g., "DOO" == "DOO" or ov.driverId "doo" == "doo")
+    if (codeLower && (ovIdLower === codeLower || ovCodeUpper === codeUpper)) return ov;
+    if (codeUpper && (ovCodeUpper === codeUpper || ovIdLower === codeLower)) return ov;
+
+    // Match surname / family name / slug containing code or id
+    if (driver.familyName) {
+      const familyLower = driver.familyName.toLowerCase();
+      if (ovIdLower === familyLower || familyLower.includes(ovIdLower) || ovIdLower.includes(familyLower)) {
+        return ov;
+      }
+    }
+
+    // Check if one ID contains the other (e.g., "doohan" contains "doo" or vice versa)
+    if (ovIdLower.length >= 3 && driverIdLower.length >= 3) {
+      if (driverIdLower.startsWith(ovIdLower) || ovIdLower.startsWith(driverIdLower)) {
+        return ov;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export async function getOpenF1LatestDrivers(): Promise<Driver[]> {
@@ -338,7 +372,7 @@ export async function getDrivers(season: string = "2026"): Promise<Driver[]> {
 
     // 4. Apply Overrides & filter inactive
     const withOverrides = baseDrivers.map((d) => {
-      const ov = overrides[d.driverId];
+      const ov = findDriverOverride(d, overrides);
       if (ov) {
         const constId = ov.constructorId || d.constructorId;
         return {
@@ -391,7 +425,7 @@ export async function getAllDriversIncludingInactive(season: string = "2026"): P
     }
 
     return baseDrivers.map((d) => {
-      const ov = overrides[d.driverId];
+      const ov = findDriverOverride(d, overrides);
       if (ov) {
         const constId = ov.constructorId || d.constructorId;
         return {
@@ -635,6 +669,7 @@ export async function autoSyncDriverLineup(): Promise<DriverChangeReport> {
     for (const transfer of report.teamTransfers) {
       await saveDriverOverride({
         driverId: transfer.driverId,
+        code: transfer.code,
         constructorId: transfer.toConstructorId,
         constructorName: CONSTRUCTOR_DISPLAY_NAMES[transfer.toConstructorId] || transfer.toTeam,
         teamColor: CONSTRUCTOR_COLORS[transfer.toConstructorId],
@@ -646,6 +681,7 @@ export async function autoSyncDriverLineup(): Promise<DriverChangeReport> {
     for (const absent of report.absentDrivers) {
       await saveDriverOverride({
         driverId: absent.driverId,
+        code: absent.code,
         isActive: false,
       });
     }
@@ -654,6 +690,7 @@ export async function autoSyncDriverLineup(): Promise<DriverChangeReport> {
     for (const newDriver of report.newDrivers) {
       await saveDriverOverride({
         driverId: newDriver.driverId,
+        code: newDriver.code,
         constructorId: newDriver.constructorId,
         constructorName: CONSTRUCTOR_DISPLAY_NAMES[newDriver.constructorId] || newDriver.team,
         teamColor: CONSTRUCTOR_COLORS[newDriver.constructorId],

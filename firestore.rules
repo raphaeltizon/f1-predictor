@@ -50,5 +50,16 @@ service cloud.firestore {
       // Only Admin can write manual or synced official results
       allow write: if isAdmin();
     }
+
+    // 4. Driver Replacements & Lineup Overrides
+    match /driver_replacements/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /driver_overrides/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

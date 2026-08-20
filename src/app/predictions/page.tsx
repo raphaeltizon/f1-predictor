@@ -4,6 +4,8 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { getSeasonSchedule, getDrivers, Race, Driver } from "@/lib/f1Api";
 import { useAuth } from "@/context/AuthContext";
 import { savePrediction, getPrediction, isSessionLocked, getSessionDate, getDriverReplacements } from "@/lib/predictions";
+import { db } from "@/lib/firebase";
+import { collection, onSnapshot } from "firebase/firestore";
 import { 
   ChevronUp, 
   ChevronDown, 
@@ -40,10 +42,20 @@ export default function Predictions() {
   const [sessionLocked, setSessionLocked] = useState(false);
   const [driverReplacements, setDriverReplacements] = useState<Record<string, string>>({});
 
-
-
-  // Listen for storage events (admin lineup updates or driver replacement updates)
+  // Real-time Firestore sync for driver active/inactive overrides and replacements across all users
   useEffect(() => {
+    const unsubOverrides = onSnapshot(collection(db, "driver_overrides"), async () => {
+      const updatedDrivers = await getDrivers("2026");
+      setDrivers(updatedDrivers);
+    }, (err) => console.warn("Driver overrides listener warning:", err));
+
+    const unsubReplacements = onSnapshot(collection(db, "driver_replacements"), async () => {
+      if (selectedRound) {
+        const reps = await getDriverReplacements("2026", selectedRound);
+        setDriverReplacements(reps);
+      }
+    }, (err) => console.warn("Driver replacements listener warning:", err));
+
     const handleStorage = async () => {
       const updatedDrivers = await getDrivers("2026");
       setDrivers(updatedDrivers);
@@ -53,7 +65,12 @@ export default function Predictions() {
       }
     };
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+
+    return () => {
+      unsubOverrides();
+      unsubReplacements();
+      window.removeEventListener("storage", handleStorage);
+    };
   }, [selectedRound]);
 
   // Load schedule and drivers

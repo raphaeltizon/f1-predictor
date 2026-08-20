@@ -12,7 +12,8 @@ A premium, interactive web application built with **Next.js 14 (App Router)** an
 - **Automated Prediction Locking**: Locks predictions automatically the second a session starts, ensuring fair play.
 - **Global Leaderboard**: An interactive standings board featuring podium animations for the top three players and a real-time search utility.
 - **Admin Dashboard & Jolpica API Sync**: Synchronize actual results directly from the official **Jolpica Ergast F1 API** to automatically score all user submissions.
-- **Local Simulation / Mock Mode**: A fully functioning offline mode allowing the entire application to be run and tested without setting up database infrastructure.
+- **Driver Transfer & Substitution Manager**: Admin tools to manage mid-season driver seat swaps and substitute driver scoring rules with automatic OpenF1 detection.
+- **Real-Time Data with Firebase**: Real-time user standings and live prediction sync powered by **Firebase Cloud Firestore** and **Firebase Authentication**.
 
 ---
 
@@ -29,20 +30,12 @@ Points are calculated individually for each predicted position in the Top 10 and
 
 ---
 
-## ⚡ Architecture & Dual Mode
+## ⚡ Architecture & Database
 
-The application implements a smart **Dual Database Mode** to allow seamless local testing and robust production deployment:
+The application is powered by **Firebase Cloud Firestore** and **Firebase Authentication**:
 
-### 1. Mock Mode (Default)
-If no Firebase environment variables are configured, the app runs locally without a backend.
-- **Authentication**: Simulates user authentication with custom usernames.
-- **Storage**: Backs up predictions, user scores, and cached schedules in the browser's `localStorage`.
-- **Simulation**: In the Admin Dashboard (`/admin`), you can generate randomized actual results and simulate scoring for mock users to see how the leaderboard dynamically updates.
-
-### 2. Production Firebase Mode
-By supplying your Firebase credentials, the app turns into a full-stack multi-user platform.
 - **Authentication**: Secure login using Google Auth via Firebase Authentication.
-- **Database**: Stores all user predictions, standings, and official results in Firestore.
+- **Database**: Stores all user predictions, standings, driver overrides, and official results in Firestore.
 - **Synchronization**: Syncs actual race data from the Jolpica API to trigger live scoring updates.
 
 ---
@@ -52,7 +45,7 @@ By supplying your Firebase credentials, the app turns into a full-stack multi-us
 ```text
 ├── src/
 │   ├── app/                      # Next.js App Router Pages
-│   │   ├── admin/                # Admin Panel (Trigger API Syncing & Mock Simulations)
+│   │   ├── admin/                # Admin Panel (Trigger API Syncing & Driver Management)
 │   │   ├── leaderboard/          # Global standings list with search and podium
 │   │   ├── predictions/          # Submission screen for arranging driver predictions
 │   │   ├── results/              # View official race weekend session outcomes
@@ -63,13 +56,14 @@ By supplying your Firebase credentials, the app turns into a full-stack multi-us
 │   │   ├── Countdown.tsx         # Real-time counter for session lockouts
 │   │   └── Navbar.tsx            # Navigation bar with user profile actions
 │   ├── context/
-│   │   └── AuthContext.tsx       # Auth provider wrapping Firebase & Mock-Auth state
+│   │   └── AuthContext.tsx       # Auth provider wrapping Firebase Auth state
 │   └── lib/
-│       ├── f1Api.ts              # API client fetching data from Ergast/Jolpica with cache
-│       ├── firebase.ts           # Firebase SDK initialization & LocalStorage fallbacks
-│       └── predictions.ts        # Database helpers & Prediction scoring logic
+│   │   ├── f1Api.ts              # API client fetching data from Ergast/Jolpica with cache
+│   │   ├── firebase.ts           # Firebase SDK initialization
+│   │   └── predictions.ts        # Database helpers & Prediction scoring logic
 ├── public/                       # Static public assets
 ├── .env.local.template           # Template for custom configuration
+├── firestore.rules               # Firestore security rules
 ├── tailwind.config.ts            # Premium Formula 1 color schemes and skew utilities
 └── package.json                  # Dependencies and execution scripts
 ```
@@ -84,8 +78,8 @@ Make sure you have Node.js installed, then run:
 npm install
 ```
 
-### 2. Configure Environment Variables (Optional)
-To use production Firebase features, copy `.env.local.template` to `.env.local` and enter your Firebase app credentials:
+### 2. Configure Environment Variables
+Copy `.env.local.template` to `.env.local` and enter your Firebase app credentials:
 ```bash
 cp .env.local.template .env.local
 ```
@@ -141,7 +135,7 @@ Click **Deploy**. Once the build finishes, your production-ready F1 Predictor ap
 
 To score users' submissions once a race weekend ends:
 1. Log in to the application.
-2. Navigate to the **Admin Dashboard** (`/admin`). (If running in Firebase mode, ensure your user profile has administrative authorization, or configure it via Firebase console).
+2. Navigate to the **Admin Dashboard** (`/admin`). Ensure your user profile has administrative authorization or is the designated admin email.
 3. Select the round and session (Qualifying, Sprint, or Race) you want to score.
-4. Click **Sync and Score** to fetch official data from the API and update the rankings.
-5. In **Mock Mode**, use the simulation generators to populate mock driver layouts and view the standings immediately!
+4. Click **Score Quali / Score Sprint / Score GP Race** to fetch official data from the API and update the rankings.
+5. For Sprint Shootout, record results via **Manual Classification Override** and click **Save & Score**.

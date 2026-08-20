@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Trophy, Calendar, ClipboardCheck, Settings, LogIn, LogOut, Menu, X, Award, AlertCircle, Radio } from "lucide-react";
 
 export const Navbar: React.FC = () => {
-  const { user, login, logout, isMock } = useAuth();
+  const { user, login, logout } = useAuth();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -19,25 +19,17 @@ export const Navbar: React.FC = () => {
       { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
     ];
 
-    if (user && (user.isAdmin || user.email === "rgtizon0@gmail.com" || isMock)) {
+    if (user && (user.isAdmin || user.email === "rgtizon0@gmail.com")) {
       links.push({ name: "Admin Panel", href: "/admin", icon: Settings });
     }
 
     return links;
-  }, [user, isMock]);
+  }, [user]);
 
   const isActive = (path: string) => pathname === path;
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-background/80 backdrop-blur-xl">
-      {/* Mock Mode Alert Banner */}
-      {isMock && (
-        <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600/90 via-amber-500 to-yellow-600 px-4 py-1 text-center text-xs font-semibold text-white shadow-sm">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span>Mock Mode Active — Connect Firebase in <code>.env.local</code> to enable real data & authentication.</span>
-        </div>
-      )}
-
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand/Logo */}
         <div className="flex items-center gap-8">

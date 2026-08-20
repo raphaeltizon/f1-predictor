@@ -29,7 +29,7 @@ import {
   ScoreBreakdown
 } from "@/lib/predictions";
 import { Settings, ShieldAlert, RefreshCw, CheckCircle, AlertTriangle, UserCheck, Users, ArrowRightLeft, Radio, Radar, Eye, EyeOff, RotateCcw } from "lucide-react";
-import { db, isFirebaseConfigured } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 
 /** Shared helper to score a batch of predictions against results and update leaderboard */
@@ -72,7 +72,7 @@ async function scoreAndSaveAll(
 }
 
 export default function Admin() {
-  const { user, isMock } = useAuth();
+  const { user } = useAuth();
 
   const [schedule, setSchedule] = useState<Race[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -227,9 +227,11 @@ export default function Admin() {
       setErrorMessage("Please select both a driver and a target constructor.");
       return;
     }
+    const targetDriver = allDrivers.find(d => d.driverId === swapDriverId);
     const name = constNameMap[swapConstructorId] || swapConstructorId;
     await saveDriverOverride({
       driverId: swapDriverId,
+      code: targetDriver?.code,
       constructorId: swapConstructorId,
       constructorName: name,
     });
@@ -242,15 +244,17 @@ export default function Admin() {
   };
 
   const handleToggleDriverActive = async (driverId: string, currentlyActive: boolean) => {
+    const targetDriver = allDrivers.find(d => d.driverId === driverId);
     await saveDriverOverride({
       driverId,
+      code: targetDriver?.code,
       isActive: !currentlyActive,
     });
     const updatedDrivers = await getDrivers("2026");
     const updatedAllDrivers = await getAllDriversIncludingInactive("2026");
     setDrivers(updatedDrivers);
     setAllDrivers(updatedAllDrivers);
-    addLog(`[LINEUP] ${driverId.toUpperCase()} marked as ${!currentlyActive ? "ACTIVE" : "INACTIVE"}`);
+    addLog(`[LINEUP] ${targetDriver?.code || driverId.toUpperCase()} marked as ${!currentlyActive ? "ACTIVE" : "INACTIVE"}`);
   };
 
   const handleSaveReplacementRule = async () => {
@@ -329,23 +333,10 @@ export default function Admin() {
       } else if (sessionType === "sprintQuali") {
         addLog(`Retrieving manually entered Sprint Shootout results...`);
         let manualDriverIds: string[] = [];
-        if (isFirebaseConfigured && db) {
-          const resRef = doc(db, "results", `2026_${round}_sprintQuali`);
-          const resSnap = await getDoc(resRef);
-          if (resSnap.exists()) {
-            manualDriverIds = resSnap.data().driverIds || [];
-          }
-        }
-        if (manualDriverIds.length === 0 && typeof window !== "undefined") {
-          const resultsKey = "f1_local_results";
-          const stored = localStorage.getItem(resultsKey);
-          if (stored) {
-            const allResults = JSON.parse(stored);
-            const localKey = `2026_${round}_sprintQuali`;
-            if (allResults[localKey]) {
-              manualDriverIds = allResults[localKey].driverIds || [];
-            }
-          }
+        const resRef = doc(db, "results", `2026_${round}_sprintQuali`);
+        const resSnap = await getDoc(resRef);
+        if (resSnap.exists()) {
+          manualDriverIds = resSnap.data().driverIds || [];
         }
         if (manualDriverIds.length === 0) {
           throw new Error("No manually entered results found for Sprint Qualifying. Please use the Manual Entry form first.");
@@ -387,10 +378,6 @@ export default function Admin() {
         addLog
       );
 
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("storage"));
-      }
-
       addLog(`Success! Scored and updated ${scoresComputedCount} players.`);
       addLog(`Leaderboard recalculation finished.`);
 
@@ -402,103 +389,6 @@ export default function Admin() {
     } finally {
       setActiveSyncing(null);
     }
-  };
-
-  const triggerMockGenerate = async (round: string, raceName: string, sessionType: "quali" | "race" | "sprint" | "sprintQuali") => {
-    const key = `${round}_${sessionType}`;
-    setActiveSyncing(key);
-    setErrorMessage(null);
-    setLogs([]);
-
-    addLog(`[MOCK MODE] Simulating session closure for ${raceName}...`);
-
-    const shuffledDrivers = [...drivers].sort(() => Math.random() - 0.5);
-    const mockOfficialIds = shuffledDrivers.slice(0, 10).map(d => d.driverId);
-    const mockFastestLapId = shuffledDrivers[Math.floor(Math.random() * 10)].driverId;
-
-    if (typeof window !== "undefined") {
-      const resultsKey = "f1_local_results";
-      const existingResults = localStorage.getItem(resultsKey);
-      let localResults: Record<string, Record<string, unknown>> = {};
-      if (existingResults) {
-        try { localResults = JSON.parse(existingResults); } catch (e) { /* ignore parse error */ }
-      }
-      localResults[`2026_${round}_${sessionType}`] = {
-        driverIds: mockOfficialIds,
-        fastestLapDriverId: sessionType === "race" ? mockFastestLapId : undefined
-      };
-      localStorage.setItem(resultsKey, JSON.stringify(localResults));
-    }
-
-    addLog(`Mock Grid Results Top 3: P1: ${shuffledDrivers[0].code}, P2: ${shuffledDrivers[1].code}, P3: ${shuffledDrivers[2].code}`);
-
-    const replacements = await getDriverReplacements("2026", round);
-    if (Object.keys(replacements).length > 0) {
-      addLog(`Applied Replacement Rules for Round ${round}: ${JSON.stringify(replacements)}`);
-    }
-
-    addLog(`Simulating opponent predictions...`);
-    const opponents = [
-      { userId: "opponent-1", userName: "Charles Leclerc" },
-      { userId: "opponent-2", userName: "Max Verstappen" },
-      { userId: "opponent-3", userName: "Lando Norris" },
-      { userId: "opponent-4", userName: "Lewis Hamilton" },
-    ];
-
-    let playerPred = await getPredictionsForRound("2026", round);
-    let sessionPlayerPreds = playerPred.filter(p => p.sessionType === sessionType);
-
-    if (sessionPlayerPreds.length === 0 && user) {
-      addLog(`Real player did not submit predictions. Generating a speculative submission...`);
-      const userRandomIds = [...drivers].sort(() => Math.random() - 0.5).slice(0, 10).map(d => d.driverId);
-      const userPredObj: Prediction = {
-        userId: user.uid,
-        userName: user.displayName || "Racer",
-        season: "2026",
-        round,
-        sessionType: sessionType as "quali" | "race" | "sprint" | "sprintQuali",
-        driverIds: userRandomIds,
-        fastestLapDriverId: sessionType === "race" ? userRandomIds[0] : undefined,
-        submittedAt: Date.now()
-      };
-      sessionPlayerPreds = [userPredObj];
-    }
-
-    const allSubmissions: Prediction[] = [...sessionPlayerPreds];
-
-    opponents.forEach(opp => {
-      const oppRandomIds = [...drivers].sort(() => Math.random() - 0.5).slice(0, 10).map(d => d.driverId);
-      allSubmissions.push({
-        userId: opp.userId,
-        userName: opp.userName,
-        season: "2026",
-        round,
-        sessionType: sessionType as "quali" | "race" | "sprint" | "sprintQuali",
-        driverIds: oppRandomIds,
-        fastestLapDriverId: sessionType === "race" ? oppRandomIds[0] : undefined,
-        submittedAt: Date.now()
-      });
-    });
-
-    addLog(`Calculating points for ${allSubmissions.length} active players...`);
-
-    const scoresComputedCount = await scoreAndSaveAll(
-      allSubmissions,
-      mockOfficialIds,
-      mockFastestLapId,
-      replacements,
-      "2026",
-      round,
-      sessionType,
-      addLog
-    );
-
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("storage"));
-    }
-
-    addLog(`[MOCK MODE] Simulation finished successfully. Scored ${scoresComputedCount} players.`);
-    setActiveSyncing(null);
   };
 
   const triggerManualScore = async (
@@ -521,26 +411,11 @@ export default function Admin() {
       }
 
       addLog(`Saving manual results to database...`);
-      if (isFirebaseConfigured && db) {
-        const resRef = doc(db, "results", `2026_${round}_${sessionType}`);
-        await setDoc(resRef, {
-          driverIds: filledDrivers,
-          updatedAt: Date.now()
-        });
-      }
-
-      if (typeof window !== "undefined") {
-        const resultsKey = "f1_local_results";
-        const existingResults = localStorage.getItem(resultsKey);
-        let localResults: Record<string, Record<string, unknown>> = {};
-        if (existingResults) {
-          try { localResults = JSON.parse(existingResults); } catch (e) { /* ignore parse error */ }
-        }
-        localResults[`2026_${round}_${sessionType}`] = {
-          driverIds: filledDrivers
-        };
-        localStorage.setItem(resultsKey, JSON.stringify(localResults));
-      }
+      const resRef = doc(db, "results", `2026_${round}_${sessionType}`);
+      await setDoc(resRef, {
+        driverIds: filledDrivers,
+        updatedAt: Date.now()
+      });
 
       addLog(`Grid Results saved successfully.`);
 
@@ -574,10 +449,6 @@ export default function Admin() {
         addLog
       );
 
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("storage"));
-      }
-
       addLog(`Success! Scored and updated ${scoresComputedCount} players.`);
       addLog(`Leaderboard recalculation finished.`);
 
@@ -601,7 +472,7 @@ export default function Admin() {
   }
 
   // Double check admin page permissions
-  const isAuthorized = user && (user.isAdmin || user.email === "rgtizon0@gmail.com" || isMock);
+  const isAuthorized = user && (user.isAdmin || user.email === "rgtizon0@gmail.com");
   if (!isAuthorized) {
     return (
       <div className="glass-panel p-8 rounded-2xl text-center max-w-xl mx-auto border border-red-500/20 space-y-4">
@@ -623,7 +494,7 @@ export default function Admin() {
             <Settings className="h-8 w-8 text-primary" />
             Admin Telemetry Command Center
           </h1>
-          <p className="text-slate-400 text-sm mt-1">Manage championship results synchronization, mock data simulation, and player scoring tables.</p>
+          <p className="text-slate-400 text-sm mt-1">Manage championship results synchronization, driver lineup adjustments, and player scoring.</p>
         </div>
       </div>
 
@@ -652,10 +523,7 @@ export default function Admin() {
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-border/50">
                   {/* GP Quali Sync */}
                   <button
-                    onClick={() => isMock
-                      ? triggerMockGenerate(race.round, race.raceName, "quali")
-                      : triggerSync(race.round, race.raceName, "quali")
-                    }
+                    onClick={() => triggerSync(race.round, race.raceName, "quali")}
                     disabled={activeSyncing !== null}
                     className="flex items-center gap-1.5 bg-surface hover:bg-surface-hover border border-border px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-white active:scale-95 transition-all disabled:opacity-40"
                   >
@@ -666,10 +534,7 @@ export default function Admin() {
                   {/* Sprint Sync (if sprint weekend) */}
                   {race.Sprint && (
                     <button
-                      onClick={() => isMock
-                        ? triggerMockGenerate(race.round, race.raceName, "sprint")
-                        : triggerSync(race.round, race.raceName, "sprint")
-                      }
+                      onClick={() => triggerSync(race.round, race.raceName, "sprint")}
                       disabled={activeSyncing !== null}
                       className="flex items-center gap-1.5 bg-sprint/15 hover:bg-sprint/30 border border-sprint/40 px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-sprint active:scale-95 transition-all disabled:opacity-40"
                     >
@@ -680,10 +545,7 @@ export default function Admin() {
 
                   {/* GP Race Sync */}
                   <button
-                    onClick={() => isMock
-                      ? triggerMockGenerate(race.round, race.raceName, "race")
-                      : triggerSync(race.round, race.raceName, "race")
-                    }
+                    onClick={() => triggerSync(race.round, race.raceName, "race")}
                     disabled={activeSyncing !== null}
                     className="flex items-center gap-1.5 bg-primary/15 hover:bg-primary/30 border border-primary/40 px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-primary active:scale-95 transition-all disabled:opacity-40 shadow-neon-red"
                   >
@@ -695,14 +557,10 @@ export default function Admin() {
                   {race.SprintQualifying && (
                     <button
                       onClick={() => {
-                        if (isMock) {
-                          triggerMockGenerate(race.round, race.raceName, "sprintQuali");
-                        } else {
-                          setManualRound(race.round);
-                          setManualSession("sprintQuali");
-                          const manualSection = document.getElementById("manual-entry-section");
-                          manualSection?.scrollIntoView({ behavior: "smooth" });
-                        }
+                        setManualRound(race.round);
+                        setManualSession("sprintQuali");
+                        const manualSection = document.getElementById("manual-entry-section");
+                        manualSection?.scrollIntoView({ behavior: "smooth" });
                       }}
                       disabled={activeSyncing !== null}
                       className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500/30 border border-amber-500/40 px-3.5 py-2 rounded-lg text-xs font-mono font-bold text-amber-400 active:scale-95 transition-all disabled:opacity-40"
@@ -1054,11 +912,7 @@ export default function Admin() {
             <div className="mt-4 bg-surface/80 border border-border/80 p-4 rounded-xl flex items-center gap-3">
               <UserCheck className="h-5 w-5 text-secondary shrink-0" />
               <div className="text-xs text-slate-300 font-medium">
-                {isMock ? (
-                  <span>Running in <strong>Mock Mode</strong>. Scoring calculates using locally simulated grid data.</span>
-                ) : (
-                  <span>Connected to <strong>Firebase Server</strong>. Real Ergast API sync enabled.</span>
-                )}
+                <span>Connected to <strong>Firebase Cloud Firestore</strong>. Official Jolpica/Ergast API sync enabled.</span>
               </div>
             </div>
           </div>
