@@ -79,11 +79,23 @@ export async function saveDriverReplacements(
     }
   }
 
+  // 1. Persist to results/lineup_replacements (publicly accessible)
+  try {
+    const publicDocRef = doc(db, "results", "lineup_replacements");
+    const snap = await getDoc(publicDocRef);
+    const existingReps = snap.exists() ? (snap.data().rounds || {}) : {};
+    existingReps[docId] = replacements;
+    await setDoc(publicDocRef, { rounds: existingReps, updatedAt: Date.now() }, { merge: true });
+  } catch (e) {
+    console.warn("Firebase save to results/lineup_replacements failed:", e);
+  }
+
+  // 2. Also try driver_replacements collection
   try {
     const docRef = doc(db, "driver_replacements", docId);
     await setDoc(docRef, { season, round, replacements, updatedAt: Date.now() });
   } catch (e) {
-    console.warn("Firebase save driver replacements failed (saved locally):", e);
+    // ignore
   }
 }
 
@@ -106,6 +118,21 @@ export async function getDriverReplacements(
     } catch (e) { /* ignore */ }
   }
 
+  // 1. Try reading from results/lineup_replacements (publicly accessible)
+  try {
+    const publicDocRef = doc(db, "results", "lineup_replacements");
+    const publicSnap = await getDoc(publicDocRef);
+    if (publicSnap.exists()) {
+      const rounds = publicSnap.data().rounds || {};
+      if (rounds[docId]) {
+        return rounds[docId];
+      }
+    }
+  } catch (e) {
+    console.warn("Reading results/lineup_replacements notice:", e);
+  }
+
+  // 2. Try reading from driver_replacements collection
   try {
     const docRef = doc(db, "driver_replacements", docId);
     const snap = await getDoc(docRef);
@@ -122,7 +149,7 @@ export async function getDriverReplacements(
       return data;
     }
   } catch (e) {
-    console.warn("Firebase get driver replacements failed (using localStorage):", e);
+    // If permission-denied (non-admin), results/lineup_replacements already provided the data!
   }
   return localReps;
 }
@@ -136,6 +163,13 @@ export async function clearAllDriverReplacements(): Promise<void> {
     } catch (e) {
       console.warn("Failed to clear localStorage driver replacements:", e);
     }
+  }
+
+  try {
+    const publicDocRef = doc(db, "results", "lineup_replacements");
+    await setDoc(publicDocRef, { rounds: {}, updatedAt: Date.now() });
+  } catch (e) {
+    // ignore
   }
 
   try {

@@ -61,15 +61,21 @@ export default function Results() {
 
   // Real-time Firestore sync for driver overrides
   useEffect(() => {
+    let unsubPublic = () => {};
+    try {
+      unsubPublic = onSnapshot(doc(db, "results", "lineup_overrides"), async () => {
+        const updatedDrivers = await getDrivers("2026");
+        setDrivers(updatedDrivers);
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
+
     let unsubscribe = () => {};
     try {
       unsubscribe = onSnapshot(collection(db, "driver_overrides"), async () => {
         const updatedDrivers = await getDrivers("2026");
         setDrivers(updatedDrivers);
-      }, (err) => console.warn("Results driver overrides listener warning:", err));
-    } catch (e) {
-      console.warn("onSnapshot error:", e);
-    }
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
 
     const handleSync = async () => {
       const updatedDrivers = await getDrivers("2026");
@@ -80,6 +86,7 @@ export default function Results() {
     window.addEventListener("f1_overrides_updated", handleSync);
 
     return () => {
+      unsubPublic();
       unsubscribe();
       window.removeEventListener("storage", handleSync);
       window.removeEventListener("f1_overrides_updated", handleSync);

@@ -162,58 +162,71 @@ export async function getDriverOverrides(): Promise<Record<string, DriverOverrid
     }
   }
 
+  const res: Record<string, DriverOverride> = {};
+
+  const processOverrideData = (data: DriverOverride) => {
+    const aliases = getDriverAliases(data);
+    if (data.driverId) aliases.push(data.driverId);
+
+    aliases.forEach(alias => {
+      const existing = res[alias];
+      if (existing) {
+        res[alias] = {
+          ...existing,
+          ...data,
+          isActive: (data.isActive === false || existing.isActive === false) 
+            ? false 
+            : (data.isActive ?? existing.isActive),
+        };
+      } else {
+        res[alias] = { ...data };
+      }
+    });
+  };
+
+  // 1. First, try reading from results/lineup_overrides (publicly accessible by all users)
+  try {
+    const publicDocRef = doc(db, "results", "lineup_overrides");
+    const publicSnap = await getDoc(publicDocRef);
+    if (publicSnap.exists()) {
+      const publicData = publicSnap.data();
+      const overridesMap = (publicData.overrides || {}) as Record<string, DriverOverride>;
+      Object.values(overridesMap).forEach(ov => {
+        if (ov && typeof ov === "object") {
+          processOverrideData(ov);
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("Reading results/lineup_overrides notice:", e);
+  }
+
+  // 2. Also try reading from driver_overrides collection if accessible
   try {
     const colRef = collection(db, "driver_overrides");
     const snap = await getDocs(colRef);
-    const res: Record<string, DriverOverride> = {};
-    
-    // 1. Process all documents from Firestore
-    const rawDocs: DriverOverride[] = [];
     snap.docs.forEach(docSnap => {
       const data = docSnap.data() as DriverOverride;
-      rawDocs.push({ ...data, driverId: data.driverId || docSnap.id });
+      processOverrideData({ ...data, driverId: data.driverId || docSnap.id });
     });
-
-    // 2. Populate all alias keys for each doc
-    rawDocs.forEach(data => {
-      const aliases = getDriverAliases(data);
-      if (data.driverId) aliases.push(data.driverId);
-
-      aliases.forEach(alias => {
-        const existing = res[alias];
-        if (existing) {
-          res[alias] = {
-            ...existing,
-            ...data,
-            // If ANY doc for this driver specifies isActive: false, keep isActive: false
-            isActive: (data.isActive === false || existing.isActive === false) 
-              ? false 
-              : (data.isActive ?? existing.isActive),
-          };
-        } else {
-          res[alias] = { ...data };
-        }
-      });
-    });
-
-    // 3. Merge in any local overrides that aren't yet in Firestore
-    Object.keys(localOverrides).forEach(key => {
-      if (!res[key]) {
-        res[key] = localOverrides[key];
-      }
-    });
-
-    if (typeof window !== "undefined" && Object.keys(res).length > 0) {
-      try {
-        localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(res));
-      } catch (e) { /* ignore */ }
-    }
-
-    return res;
   } catch (e) {
-    console.warn("Firebase get driver overrides failed (using localStorage):", e);
-    return localOverrides;
+    // If permission-denied (non-admin), results/lineup_overrides already provided the data!
   }
+
+  // 3. Merge in local overrides if not yet present
+  Object.keys(localOverrides).forEach(key => {
+    if (!res[key]) {
+      res[key] = localOverrides[key];
+    }
+  });
+
+  if (typeof window !== "undefined" && Object.keys(res).length > 0) {
+    try {
+      localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(res));
+    } catch (e) { /* ignore */ }
+  }
+
+  return res;
 }
 
 export async function saveDriverOverride(override: DriverOverride): Promise<void> {
@@ -221,6 +234,8 @@ export async function saveDriverOverride(override: DriverOverride): Promise<void
   if (override.driverId && !aliases.includes(override.driverId)) {
     aliases.push(override.driverId);
   }
+
+  let fullOverridesMap: Record<string, DriverOverride> = {};
 
   // 1. Immediately write to localStorage across all aliases & dispatch custom sync event
   if (typeof window !== "undefined") {
@@ -237,6 +252,7 @@ export async function saveDriverOverride(override: DriverOverride): Promise<void
       });
 
       localStorage.setItem(OVERRIDES_STORAGE_KEY, JSON.stringify(existing));
+      fullOverridesMap = existing;
       window.dispatchEvent(new Event("storage"));
       window.dispatchEvent(new CustomEvent("f1_overrides_updated", { detail: existing }));
     } catch (e) {
@@ -244,7 +260,27 @@ export async function saveDriverOverride(override: DriverOverride): Promise<void
     }
   }
 
-  // 2. Persist to Firestore across all relevant doc IDs so no stale doc remains
+  // 2. Persist to results/lineup_overrides (publicly readable collection)
+  try {
+    const publicDocRef = doc(db, "results", "lineup_overrides");
+    const currentDoc = await getDoc(publicDocRef);
+    const existingMap = currentDoc.exists() ? (currentDoc.data().overrides || {}) : {};
+    
+    const canonicalKey = override.driverId.toLowerCase();
+    existingMap[canonicalKey] = override;
+    aliases.forEach(a => {
+      existingMap[a.toLowerCase()] = { ...override, driverId: a.toLowerCase() };
+    });
+
+    await setDoc(publicDocRef, {
+      overrides: existingMap,
+      updatedAt: Date.now(),
+    }, { merge: true });
+  } catch (e) {
+    console.warn("Firebase save to results/lineup_overrides failed:", e);
+  }
+
+  // 3. Also persist to driver_overrides collection for redundancy
   try {
     const docIdsToSave = new Set<string>();
     docIdsToSave.add(override.driverId);
@@ -253,7 +289,6 @@ export async function saveDriverOverride(override: DriverOverride): Promise<void
       docIdsToSave.add(override.code.toLowerCase());
     }
 
-    // Find fallback match to also update fallback docId (e.g. "doohan" alongside "doo", "hadjar" alongside "had")
     const fallbackMatch = getFallbackLineup().find(f => 
       (override.code && f.code.toUpperCase() === override.code.toUpperCase()) ||
       (override.familyName && f.familyName.toLowerCase() === override.familyName.toLowerCase()) ||
@@ -283,6 +318,13 @@ export async function clearAllDriverOverrides(): Promise<void> {
     } catch (e) {
       console.warn("Failed to clear localStorage driver overrides:", e);
     }
+  }
+
+  try {
+    const publicDocRef = doc(db, "results", "lineup_overrides");
+    await setDoc(publicDocRef, { overrides: {}, updatedAt: Date.now() });
+  } catch (e) {
+    console.warn("Firebase clear results/lineup_overrides failed:", e);
   }
 
   try {

@@ -121,6 +121,16 @@ export default function Admin() {
     loadData();
 
     // Listen to real-time driver overrides & replacements
+    let unsubPublic = () => {};
+    try {
+      unsubPublic = onSnapshot(doc(db, "results", "lineup_overrides"), async () => {
+        const updatedDrivers = await getDrivers("2026");
+        const updatedAllDrivers = await getAllDriversIncludingInactive("2026");
+        setDrivers(updatedDrivers);
+        setAllDrivers(updatedAllDrivers);
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
+
     let unsubOverrides = () => {};
     try {
       unsubOverrides = onSnapshot(collection(db, "driver_overrides"), async () => {
@@ -128,10 +138,8 @@ export default function Admin() {
         const updatedAllDrivers = await getAllDriversIncludingInactive("2026");
         setDrivers(updatedDrivers);
         setAllDrivers(updatedAllDrivers);
-      }, (err) => console.warn("Admin driver overrides listener warning:", err));
-    } catch (e) {
-      console.warn("onSnapshot error:", e);
-    }
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
 
     const handleSyncEvents = async () => {
       const updatedDrivers = await getDrivers("2026");
@@ -145,6 +153,7 @@ export default function Admin() {
     window.addEventListener("f1_replacements_updated", handleSyncEvents);
 
     return () => {
+      unsubPublic();
       unsubOverrides();
       window.removeEventListener("storage", handleSyncEvents);
       window.removeEventListener("f1_overrides_updated", handleSyncEvents);

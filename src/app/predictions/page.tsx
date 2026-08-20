@@ -5,7 +5,7 @@ import { getSeasonSchedule, getDrivers, Race, Driver } from "@/lib/f1Api";
 import { useAuth } from "@/context/AuthContext";
 import { savePrediction, getPrediction, isSessionLocked, getSessionDate, getDriverReplacements } from "@/lib/predictions";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot } from "firebase/firestore";
 import { 
   ChevronUp, 
   ChevronDown, 
@@ -28,7 +28,7 @@ export default function Predictions() {
   const [loading, setLoading] = useState(true);
   
   // Selection states
-  const [selectedRound, setSelectedRound] = useState<string>("");
+  const [selectedRound, setSelectedRound] = useState<string>("1");
   const [activeRace, setActiveRace] = useState<Race | null>(null);
   const [activeSession, setActiveSession] = useState<"quali" | "race" | "sprintQuali" | "sprint">("quali");
 
@@ -44,15 +44,34 @@ export default function Predictions() {
 
   // Real-time Firestore sync and event sync for driver active/inactive overrides and replacements across all users
   useEffect(() => {
+    // 1. Listen to public results/lineup_overrides
+    let unsubPublicOverrides = () => {};
+    try {
+      unsubPublicOverrides = onSnapshot(doc(db, "results", "lineup_overrides"), async () => {
+        const updatedDrivers = await getDrivers("2026");
+        setDrivers(updatedDrivers);
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
+
+    // 2. Listen to public results/lineup_replacements
+    let unsubPublicReplacements = () => {};
+    try {
+      unsubPublicReplacements = onSnapshot(doc(db, "results", "lineup_replacements"), async () => {
+        if (selectedRound) {
+          const reps = await getDriverReplacements("2026", selectedRound);
+          setDriverReplacements(reps);
+        }
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
+
+    // 3. Fallback listeners for driver_overrides & driver_replacements
     let unsubOverrides = () => {};
     try {
       unsubOverrides = onSnapshot(collection(db, "driver_overrides"), async () => {
         const updatedDrivers = await getDrivers("2026");
         setDrivers(updatedDrivers);
-      }, (err) => console.warn("Driver overrides listener warning:", err));
-    } catch (e) {
-      console.warn("onSnapshot error:", e);
-    }
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
 
     let unsubReplacements = () => {};
     try {
@@ -61,10 +80,8 @@ export default function Predictions() {
           const reps = await getDriverReplacements("2026", selectedRound);
           setDriverReplacements(reps);
         }
-      }, (err) => console.warn("Driver replacements listener warning:", err));
-    } catch (e) {
-      console.warn("onSnapshot error:", e);
-    }
+      }, (err) => { /* ignore */ });
+    } catch (e) { /* ignore */ }
 
     const handleSync = async () => {
       const updatedDrivers = await getDrivers("2026");
@@ -80,6 +97,8 @@ export default function Predictions() {
     window.addEventListener("f1_replacements_updated", handleSync);
 
     return () => {
+      unsubPublicOverrides();
+      unsubPublicReplacements();
       unsubOverrides();
       unsubReplacements();
       window.removeEventListener("storage", handleSync);
